@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>APRS Client — Connect</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+.card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  padding: 40px;
+  width: 480px;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+}
+.logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.logo h1 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: -0.5px;
+}
+.logo p {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 4px;
+}
+.logo .callsign-badge {
+  display: inline-block;
+  background: #1e3a5f;
+  border: 1px solid #2563eb;
+  color: #60a5fa;
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 20px;
+  margin-top: 8px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.section {
+  margin-bottom: 20px;
+}
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+label {
+  display: block;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 5px;
+}
+input, select {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #e2e8f0;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  margin-bottom: 12px;
+}
+input:focus, select:focus { border-color: #38bdf8; }
+input::placeholder { color: #475569; }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+.presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.preset-btn {
+  background: #1e3a5f;
+  border: 1px solid #2563eb;
+  color: #60a5fa;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.preset-btn:hover { background: #1d4ed8; color: #fff; }
+.preset-btn.active { background: #2563eb; color: #fff; }
+.connect-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #2563eb, #0284c7);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 14px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  margin-top: 8px;
+}
+.connect-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.connect-btn:active { transform: translateY(0); }
+.connect-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.status {
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 12px;
+  min-height: 18px;
+}
+.status.error { color: #f87171; }
+.status.ok { color: #4ade80; }
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.checkbox-row input[type=checkbox] {
+  width: auto;
+  margin: 0;
+  accent-color: #38bdf8;
+}
+.divider {
+  border: none;
+  border-top: 1px solid #334155;
+  margin: 20px 0;
+}
+.version {
+  text-align: center;
+  font-size: 11px;
+  color: #1e293b;
+  margin-top: 20px;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>📡 APRS Client</h1>
+    <p>Advanced APRS Desktop Client</p>
+    <span class="callsign-badge">2E0LXY</span>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Quick Connect</div>
+    <div class="presets">
+      <button class="preset-btn active" onclick="setPreset('aprsnet')">APRS Net (2E0LXY)</button>
+      <button class="preset-btn" onclick="setPreset('aprs2')">APRS-IS (aprs2.net)</button>
+      <button class="preset-btn" onclick="setPreset('custom')">Custom Server</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Server</div>
+    <label>Server URL</label>
+    <input type="text" id="serverUrl" placeholder="https://www.aprsnet.uk" autocomplete="off">
+  </div>
+
+  <div class="section">
+    <div class="section-title">Credentials</div>
+    <div class="row">
+      <div>
+        <label>Your Callsign</label>
+        <input type="text" id="callsign" placeholder="M0ABC" style="text-transform:uppercase">
+      </div>
+      <div>
+        <label>APRS-IS Passcode</label>
+        <input type="password" id="passcode" placeholder="12345" autocomplete="current-password">
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <label class="checkbox-row">
+    <input type="checkbox" id="autoConnect"> Remember and auto-connect on startup
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="minimizeToTray" checked> Minimise to system tray
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="notifications" checked> Enable desktop notifications
+  </label>
+
+  <button class="connect-btn" id="connectBtn" onclick="doConnect()">
+    Connect to Server
+  </button>
+
+  <div class="status" id="status"></div>
+</div>
+<div class="version" id="version"></div>
+
+<script>
+const presets = {
+  aprsnet: { url: 'https://www.aprsnet.uk', label: 'APRS Net (2E0LXY)' },
+  aprs2:   { url: 'https://aprs2.net',      label: 'APRS-IS (aprs2.net)' },
+  custom:  { url: '',                        label: 'Custom Server' }
+};
+
+var currentPreset = 'aprsnet';
+var settings = {};
+
+function setPreset(key) {
+  currentPreset = key;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  if (key !== 'custom') {
+    document.getElementById('serverUrl').value = presets[key].url;
+    document.getElementById('serverUrl').readOnly = (key !== 'custom');
+  } else {
+    document.getElementById('serverUrl').readOnly = false;
+    document.getElementById('serverUrl').focus();
+  }
+}
+
+async function init() {
+  if (!window.aprsClient) return;
+  settings = await window.aprsClient.getSettings();
+  var v = await window.aprsClient.getVersion();
+  document.getElementById('version').textContent = 'APRS Client v' + v;
+
+  if (settings.serverUrl)  document.getElementById('serverUrl').value   = settings.serverUrl;
+  if (settings.callsign)   document.getElementById('callsign').value    = settings.callsign.toUpperCase();
+  if (settings.passcode)   document.getElementById('passcode').value    = settings.passcode;
+  document.getElementById('autoConnect').checked    = !!settings.autoConnect;
+  document.getElementById('minimizeToTray').checked = settings.minimizeToTray !== false;
+  document.getElementById('notifications').checked  = settings.notifications !== false;
+
+  // Detect preset
+  var url = settings.serverUrl || '';
+  if (url.includes('aprsnet.uk')) setPresetSilent('aprsnet');
+  else if (url.includes('aprs2.net')) setPresetSilent('aprs2');
+  else setPresetSilent('custom');
+
+  // Auto-connect if enabled and we have a URL
+  if (settings.autoConnect && settings.serverUrl) {
+    document.getElementById('status').textContent = 'Auto-connecting...';
+    document.getElementById('status').className = 'status ok';
+    setTimeout(doConnect, 800);
+  }
+}
+
+function setPresetSilent(key) {
+  currentPreset = key;
+  document.querySelectorAll('.preset-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['aprsnet','aprs2','custom'][i] === key);
+  });
+  document.getElementById('serverUrl').readOnly = (key !== 'custom');
+}
+
+async function doConnect() {
+  var url      = document.getElementById('serverUrl').value.trim();
+  var callsign = document.getElementById('callsign').value.trim().toUpperCase();
+  var passcode = document.getElementById('passcode').value.trim();
+
+  if (!url) {
+    showStatus('Please enter a server URL', 'error');
+    return;
+  }
+
+  // Normalise URL
+  if (!url.startsWith('http')) url = 'https://' + url;
+
+  var btn = document.getElementById('connectBtn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+  showStatus('Checking server...', '');
+
+  // Save settings
+  var newSettings = {
+    serverUrl: url,
+    wsUrl: url.replace(/^http/, 'ws') + '/ws',
+    callsign, passcode,
+    autoConnect:    document.getElementById('autoConnect').checked,
+    minimizeToTray: document.getElementById('minimizeToTray').checked,
+    notifications:  document.getElementById('notifications').checked
+  };
+  await window.aprsClient.saveSettings(newSettings);
+
+  // Test server reachability
+  try {
+    var testUrl = url + '/api/version';
+    var r = await fetch(testUrl, { signal: AbortSignal.timeout(5000) });
+    var d = await r.json();
+    showStatus('Connected to ' + (d.server_name || url) + ' v' + (d.version || '?'), 'ok');
+  } catch(e) {
+    showStatus('Warning: server check failed — connecting anyway', 'error');
+  }
+
+  setTimeout(() => {
+    window.aprsClient.connectToServer(url);
+  }, 600);
+}
+
+function showStatus(msg, cls) {
+  var el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + (cls||'');
+}
+
+document.getElementById('callsign').addEventListener('input', function() {
+  this.value = this.value.toUpperCase();
+});
+
+window.addEventListener('load', init);
+window.aprsClient && window.aprsClient.onSettings(s => { settings = s; });
+</script>
+</body>
+</html>
