@@ -1,0 +1,48 @@
+{
+  "name": "aprs-client",
+  "version": "1.0.0",
+  "description": "Advanced APRS Client — desktop app for the Advanced APRS Go Server",
+  "main": "main.js",
+  "author": "Daren Loxley 2E0LXY",
+  "license": "GPL-3.0",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:linux": "electron-builder --linux deb --x64"
+  },
+  "build": {
+    "appId": "uk.aprsnet.client",
+    "productName": "APRS Client",
+    "copyright": "Copyright 2026 Daren Loxley 2E0LXY",
+    "files": ["main.js","preload.js","renderer/**/*","assets/**/*"],
+    "win": {
+      "target": [{"target":"nsis","arch":["x64"]}],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [{"target":"deb","arch":["x64"]}],
+      "icon": "assets/icon.png",
+      "category": "HamRadio",
+      "synopsis": "APRS desktop client for Advanced APRS Go Server",
+      "description": "Full-featured APRS desktop client. Connects to any APRS-IS server or Advanced APRS Go Server. Shows live map, station list, messaging, weather dashboard and more.",
+      "maintainer": "Daren Loxley <2e0lxy@amateur.radio>",
+      "desktop": {
+        "Name": "APRS Client",
+        "Comment": "Advanced APRS Desktop Client",
+        "Categories": "HamRadio;Network;"
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "APRS Client"
+    }
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}
