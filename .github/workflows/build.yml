@@ -12,39 +12,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm libarchive-tools
+
       - name: Build Linux DEB
         run: npm run build:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload DEB artifact
         uses: actions/upload-artifact@v4
         with:
           name: aprs-client-linux-deb
           path: dist/*.deb
+          if-no-files-found: warn
 
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
+
       - name: Build Windows EXE
         run: npm run build:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: aprs-client-windows-exe
           path: dist/*.exe
+          if-no-files-found: warn
 
   release:
     needs: [build-linux, build-windows]
@@ -58,11 +75,13 @@ jobs:
         with:
           name: aprs-client-linux-deb
           path: dist/
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
           name: aprs-client-windows-exe
           path: dist/
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
