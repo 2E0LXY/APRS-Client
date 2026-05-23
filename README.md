@@ -2,34 +2,44 @@
 
 Cross-platform desktop APRS client for the [Advanced APRS Go Server](https://github.com/2E0LXY/Advanced-APRS-Go-server).
 
-Built with Electron — wraps the full server web UI in a native desktop application with system tray, native notifications, and persistent connection settings.
+Built with Electron — wraps the full server web UI in a native desktop application with system tray, native notifications, GPS positioning, single sign-on, and persistent connection and appearance settings.
 
 ## Features
 
+### Desktop integration
 - Live APRS map with station icons, clustering, trails
 - Station detail modal (overview, history, packets, path tabs)
-- Packet path visualiser on map
-- Weather dashboard with historical graphs
-- APRS-IS messaging (send and receive)
-- Watchlist with native desktop notifications
-- ISS/ARISS live position and pass countdown (SGP4)
+- Weather dashboard, leaderboard, community message board
+- ISS/ARISS live position and pass countdown
 - Utilities: passcode calculator, Maidenhead converter, beacon generator, symbol picker
-- Leaderboard and community message board
 - Admin panel (full server configuration, webhooks, API keys)
-- System tray with quick connect/disconnect
-- Settings saved locally (server URL, callsign, passcode, preferences)
+- System tray with quick open/reload/disconnect
+- Native Windows desktop notifications for APRS messages
 
-## Default Server
+### New in v1.1.0
+- **Single sign-on** — automatically logs in to your aprsnet.uk member account
+- **Appearance memory** — remembers and re-applies how you like the website set up:
+  dark/light theme, map style, station filters, and feature toggles
+  (auto-fit zoom, station ghosting, propagation lines, weather radar)
+- **My location on the map** — plots your own station position on the map using
+  Windows location services (GPS/Wi-Fi), with a manual lat/lon fallback
+- **Quick message composer** — send APRS messages directly from the client toolbar
+- **Launch on Windows startup** — optional, with start-minimised-to-tray
+- **Single-instance** — re-launching focuses the existing window
 
-Connects to **www.aprsnet.uk** by default. Can be configured to connect to any:
-- Advanced APRS Go Server instance
-- Standard APRS-IS server (aprs2.net, etc.)
+## Server
+
+This client is dedicated to **www.aprsnet.uk** — the server URL is fixed, so there is
+nothing to configure. Just enter your callsign and connect.
 
 ## Download
 
 See [Releases](https://github.com/2E0LXY/APRS-Client/releases) for:
 - `APRS-Client-Setup-x.x.x.exe` — Windows 10/11 installer (NSIS)
 - `aprs-client_x.x.x_amd64.deb` — Debian/Ubuntu package
+
+Every push to `main` builds installers automatically via GitHub Actions; pushing a
+`v*` tag publishes them as a Release.
 
 ## Building from Source
 
@@ -54,33 +64,50 @@ npm run build:win
 npm run build:linux
 ```
 
-### Build outputs
-- `dist/APRS-Client-Setup-1.0.0.exe` — Windows NSIS installer
-- `dist/aprs-client_1.0.0_amd64.deb` — Debian package
-
 ## First Run
 
 1. Launch the app
-2. Select a preset server or enter a custom URL
-3. Enter your callsign and APRS-IS passcode
-4. Tick "Auto-connect on startup" to skip this screen next time
-5. Click **Connect to Server**
+2. Enter your callsign and APRS-IS passcode
+3. Optionally enter your aprsnet.uk member account for single sign-on
+4. Tick "Remember me and connect automatically" to skip this screen next time
+5. Click **Connect to APRS Net**
 
-The server web UI loads inside the app with a thin client toolbar at the bottom showing your callsign, connected server, a Settings button, and a Disconnect button.
+The server web UI loads inside the app with a client toolbar at the bottom showing
+your callsign, your plotted location, and Message / My Location / Settings /
+Disconnect buttons.
+
+## Settings
+
+Open **Settings** from the toolbar to configure:
+- APRS callsign and passcode
+- Website member account (for single sign-on)
+- Position source — GPS (automatic), manual coordinates, or off
+- Startup behaviour — auto-connect, minimise to tray, start minimised,
+  launch on Windows startup
+- Website appearance — set the site up how you like it, then click
+  "Capture current website layout" to have the client re-apply it every time
+
+Settings are stored locally in `settings.json` in the app's user-data folder.
 
 ## Architecture
 
 ```
-main.js           — Electron main process, window management, IPC, tray
-preload.js        — Context bridge (exposes aprsClient API to renderer)
+main.js              — Electron main process: window, IPC, tray, GPS position store,
+                       single-instance lock, launch-on-startup
+preload.js           — Context bridge (exposes aprsClient API to the renderer)
 renderer/
-  connect.html    — Connection/settings screen (shown on first launch)
-  client-overlay.js — Injected into server pages: toolbar, native notifications,
-                      callsign auto-fill
+  connect.html       — Connection/settings screen (shown on first launch)
+  client-overlay.js  — Injected into server pages: toolbar, native notifications,
+                       appearance-preference sync, single sign-on, GPS map marker,
+                       quick message composer
 assets/
-  icon.png        — App icon (512x512)
-  icon.ico        — Windows icon
+  icon.png           — App icon (512x512)
+  icon.ico           — Windows icon
 ```
+
+The client never modifies the website — `client-overlay.js` drives the site's own
+controls (the same ones a user would click), so it works against the live site
+with no server-side changes.
 
 ## Licence
 
