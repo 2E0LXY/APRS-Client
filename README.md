@@ -89,6 +89,17 @@ Open **Settings** from the toolbar to configure:
 
 Settings are stored locally in `settings.json` in the app's user-data folder.
 
+## Member map filter preferences
+
+The aprsnet.uk server stores per-member map filter preferences
+(`drop_pistar`, `drop_dstar`, `drop_apdesk` and others). The web map
+and the Android client v2.5.0+ both read and write these via
+`/api/member/preferences`. The Windows client currently reads only
+server-wide admin Drop Filters; per-member preference sync may be
+added in a future release. See the
+[server README](https://github.com/2E0LXY/Advanced-APRS-Go-server)
+for the full preference schema.
+
 ## Architecture
 
 ```
