@@ -27,9 +27,7 @@ jobs:
           sudo apt-get install -y rpm libarchive-tools
 
       - name: Build Linux DEB
-        run: npm run build:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:linux -- --publish never
 
       - name: Upload DEB artifact
         uses: actions/upload-artifact@v4
@@ -52,9 +50,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Build Windows EXE
-        run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win -- --publish never
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
@@ -87,3 +83,4 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
