@@ -6,10 +6,16 @@ Built with Electron: wraps the full server web UI in a native desktop applicatio
 
 [![Release](https://img.shields.io/github/v/release/2E0LXY/APRS-Client)](https://github.com/2E0LXY/APRS-Client/releases)
 [![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+![APRS Client desktop](docs/screenshot-desktop.svg)
+
+
 
 ---
 
 ## Also available on
+
+
+![APRS Net — all platforms](docs/platforms.svg)
 
 | Platform | Repository | Download |
 |----------|------------|----------|
