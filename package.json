@@ -1,6 +1,6 @@
 {
   "name": "aprs-client",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Advanced APRS Client — desktop app for the Advanced APRS Go Server",
   "main": "main.js",
   "author": "Daren Loxley 2E0LXY",
