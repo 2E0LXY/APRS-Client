@@ -389,6 +389,35 @@
     hookNotifications();
     startGPS();
 
+    /* Hook the site's WebSocket to intercept geo-fence alerts pushed by server */
+    function hookWsAlerts() {
+        var wsObj = window.ws || null;
+        if (!wsObj || wsObj.readyState === undefined) { setTimeout(hookWsAlerts, 2000); return; }
+        if (wsObj.__aprsOverlayAlertHooked) return;
+        wsObj.__aprsOverlayAlertHooked = true;
+        var _orig = wsObj.onmessage;
+        wsObj.onmessage = function(e) {
+            if (_orig) _orig.call(this, e);
+            try {
+                var d = JSON.parse(e.data);
+                if (d.type === 'alert' && d.message) {
+                    var title = d.alert_type === 'geofence_enter' ? '📍 Station entered zone'
+                              : d.alert_type === 'geofence_exit'  ? '📍 Station left zone'
+                              : '⚡ APRS Net Alert';
+                    if (typeof ac !== 'undefined') ac.showNotification(title, d.message);
+                    // Flash unread badge amber
+                    var badge = document.getElementById('__aprs_unread_badge');
+                    if (badge) {
+                        badge.style.background = '#f97316';
+                        badge.textContent = String((parseInt(badge.textContent)||0)+1);
+                        badge.style.display = 'inline-block';
+                    }
+                }
+            } catch(_) {}
+        };
+    }
+    setTimeout(hookWsAlerts, 3000); // Wait for WS to open and member auth to complete
+
     // Apply preferences once the site has rendered its controls
     setTimeout(() => { applyPrefs(); }, 1500);
     // Re-apply after member panel may have loaded (mp-* checkboxes)
