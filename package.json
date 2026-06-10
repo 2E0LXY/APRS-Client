@@ -1,7 +1,7 @@
 {
   "name": "aprs-client",
-  "version": "1.2.1",
-  "description": "Advanced APRS Client — desktop app for the Advanced APRS Go Server",
+  "version": "1.2.2",
+  "description": "Advanced APRS Client \u2014 desktop app for the Advanced APRS Go Server",
   "main": "main.js",
   "author": "Daren Loxley 2E0LXY",
   "license": "GPL-3.0",
@@ -14,13 +14,32 @@
     "appId": "uk.aprsnet.client",
     "productName": "APRS Client",
     "copyright": "Copyright 2026 Daren Loxley 2E0LXY",
-    "files": ["main.js","preload.js","renderer/**/*","assets/**/*"],
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*"
+    ],
     "win": {
-      "target": [{"target":"nsis","arch":["x64"]}],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "assets/icon.ico"
     },
     "linux": {
-      "target": [{"target":"deb","arch":["x64"]}],
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "assets/icon.png",
       "category": "HamRadio",
       "synopsis": "APRS desktop client for Advanced APRS Go Server",
