@@ -145,6 +145,8 @@ function updateTrayMenu() {
     { label: 'Reload', click: () => { mainWindow && mainWindow.webContents.reload(); } },
     { label: 'Disconnect', click: () => goToConnectScreen() },
     { type: 'separator' },
+    { label: 'Support Group', click: () => shell.openExternal('https://groups.google.com/g/aprsnetuk') },
+    { type: 'separator' },
     { label: 'Quit APRS Client', click: () => { app.isQuitting = true; app.quit(); } }
   ]));
 }
