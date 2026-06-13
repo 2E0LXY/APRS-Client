@@ -418,6 +418,169 @@
     }
     setTimeout(hookWsAlerts, 3000); // Wait for WS to open and member auth to complete
 
+    /* ── Net quick check-in ───────────────────────────────────────────────── */
+    var KNOWN_NETS_DESKTOP = [
+        { name:'APRS Thursday (HOTG)', schedule:'Every Thursday 00:00–23:59 UTC',
+          destination:'ANSRVR', bodyPrefix:'CQ HOTG ', ansrvrGroup:'HOTG' },
+        { name:'APRSPH Thursday',      schedule:'Every Thursday 00:00–23:59 UTC',
+          destination:'APRSPH', bodyPrefix:'HOTG ',    ansrvrGroup:null },
+        { name:'Hamfinity Sunday',     schedule:'Every Sunday 00:00–23:59 UTC',
+          destination:'9M4GKS', bodyPrefix:'CQ Hamfinity ', ansrvrGroup:null },
+        { name:'ANSRVR CQ',            schedule:'Any time',
+          destination:'ANSRVR', bodyPrefix:'CQ ',      ansrvrGroup:null }
+    ];
+
+    var _desktopNetsOpen = false;
+    var _desktopUnjoinGroup = null;
+
+    function injectNetsButton() {
+        // Only inject once; check the compose area is present
+        if (document.getElementById('__aprs_nets_btn')) return;
+        var sendBtn = document.getElementById('send-btn');
+        var composeArea = document.getElementById('compose-area');
+        if (!sendBtn || !composeArea) { setTimeout(injectNetsButton, 2000); return; }
+
+        // Create the 📡 nets button
+        var netsBtn = document.createElement('button');
+        netsBtn.id = '__aprs_nets_btn';
+        netsBtn.textContent = '📡';
+        netsBtn.title = 'Net quick check-in';
+        Object.assign(netsBtn.style, {
+            flexShrink: '0', width: '36px', height: '36px', borderRadius: '10px',
+            border: '1px solid #1e3a5f', background: '#0d2137', color: '#38bdf8',
+            cursor: 'pointer', fontSize: '15px', display: 'flex',
+            alignItems: 'center', justifyContent: 'center'
+        });
+
+        // Nets dropdown panel (injected below compose area)
+        var dd = document.createElement('div');
+        dd.id = '__aprs_nets_dd';
+        dd.style.cssText = 'display:none;position:absolute;bottom:100%;left:0;right:0;z-index:999999;' +
+            'background:#0b1e35;border:1px solid #1e3a5f;border-radius:12px 12px 0 0;' +
+            'max-height:320px;overflow-y:auto;font-family:Segoe UI,sans-serif;';
+        dd.innerHTML = '<div style="padding:8px 12px;font-size:12px;font-weight:700;color:#38bdf8;' +
+            'border-bottom:1px solid #1e3a5f;">📡 Net Quick Check-in</div>' +
+            KNOWN_NETS_DESKTOP.map(function(n, i) {
+                return '<div style="padding:8px 12px;cursor:pointer;border-top:1px solid #0d1f36;"' +
+                    ' onmouseenter="this.style.background=\'#0d2137\'" onmouseleave="this.style.background=\'\'"' +
+                    ' onclick="window.__aprsNetsApply(' + i + ')">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                        '<span style="font-size:12px;font-weight:700;color:#38bdf8;">' + n.name + '</span>' +
+                        '<span style="font-size:11px;font-weight:700;color:#f59e0b;">→ ' + n.destination + '</span>' +
+                    '</div>' +
+                    '<div style="font-size:10px;color:#64748b;">' + n.schedule + '</div>' +
+                    '<div style="font-size:11px;color:#86efac;margin-top:2px;">"' + n.bodyPrefix + '…"</div>' +
+                    (n.ansrvrGroup ? '<div style="font-size:10px;color:#475569;">Auto-unjoin prompt after ACK</div>' : '') +
+                '</div>';
+            }).join('');
+
+        // Unjoin banner
+        var ub = document.createElement('div');
+        ub.id = '__aprs_unjoin';
+        ub.style.cssText = 'display:none;padding:6px 12px;background:#14291a;border-bottom:1px solid #166534;' +
+            'font-family:Segoe UI,sans-serif;display:none;align-items:center;gap:8px;';
+        ub.innerHTML = '<span id="__aprs_uj_text" style="font-size:11px;color:#86efac;flex:1;"></span>' +
+            '<button id="__aprs_uj_btn" style="font-size:11px;background:#166534;color:#86efac;' +
+            'border:none;border-radius:8px;padding:3px 10px;cursor:pointer;font-weight:700;"></button>' +
+            '<button onclick="window.__aprsUnjoinDismiss()" style="font-size:11px;background:none;' +
+            'border:none;color:#64748b;cursor:pointer;">✕</button>';
+
+        // Wrap compose area with relative positioning for the dropdown
+        composeArea.style.position = 'relative';
+        composeArea.insertBefore(dd, composeArea.firstChild);
+        composeArea.insertBefore(ub, composeArea.firstChild);
+
+        // Insert the button before the textarea
+        var ta = document.getElementById('msgText');
+        if (ta && ta.parentNode) {
+            ta.parentNode.insertBefore(netsBtn, ta);
+            var sp = document.createElement('div');
+            sp.style.cssText = 'flex-shrink:0;width:6px;';
+            ta.parentNode.insertBefore(sp, ta);
+        }
+
+        netsBtn.onclick = function() {
+            _desktopNetsOpen = !_desktopNetsOpen;
+            dd.style.display = _desktopNetsOpen ? 'block' : 'none';
+        };
+
+        window.__aprsNetsApply = function(idx) {
+            var net = KNOWN_NETS_DESKTOP[idx];
+            if (!net) return;
+            if (typeof openConversation === 'function') openConversation(net.destination);
+            setTimeout(function() {
+                var ta2 = document.getElementById('msgText');
+                if (ta2) { ta2.value = net.bodyPrefix; ta2.dispatchEvent(new Event('input')); ta2.focus(); }
+            }, 150);
+            dd.style.display = 'none';
+            _desktopNetsOpen = false;
+        };
+
+        window.__aprsUnjoinDismiss = function() {
+            _desktopUnjoinGroup = null;
+            var u = document.getElementById('__aprs_unjoin');
+            if (u) u.style.display = 'none';
+        };
+    }
+
+    /* Intercept incoming WS messages to detect ANSRVR check-in ACK */
+    function hookWsForUnjoin() {
+        var wsObj = window.ws || null;
+        if (!wsObj || wsObj.readyState === undefined) { setTimeout(hookWsForUnjoin, 2000); return; }
+        if (wsObj.__aprsOverlayUnjoinHooked) return;
+        wsObj.__aprsOverlayUnjoinHooked = true;
+        var _orig2 = wsObj.onmessage;
+        wsObj.onmessage = function(e) {
+            if (_orig2) _orig2.call(this, e);
+            try {
+                var d = JSON.parse(e.data);
+                if (d.type === 'rx' && d.packet) {
+                    var pkt = d.packet;
+                    var gt = pkt.indexOf('>'), col = pkt.indexOf(':');
+                    if (gt > 0 && col > gt) {
+                        var from = pkt.substring(0, gt).trim().toUpperCase();
+                        var body = pkt.substring(col + 1);
+                        // Is this a message addressed to us from ANSRVR?
+                        if (from === 'ANSRVR' && /^:[A-Z0-9 \-]{9}:/.test(body) &&
+                            !_desktopUnjoinGroup && body.indexOf('ack') === -1) {
+                            // Look at last outgoing CQ in conversations
+                            var conv = (typeof _conversations !== 'undefined' && _conversations['ANSRVR']) || [];
+                            for (var i = conv.length - 1; i >= 0; i--) {
+                                if (conv[i].out) {
+                                    var m2 = /^CQ\s+(\S+)/i.exec((conv[i].text || '').trim());
+                                    if (m2) {
+                                        _desktopUnjoinGroup = m2[1].toUpperCase();
+                                        var ub2 = document.getElementById('__aprs_unjoin');
+                                        var txt = document.getElementById('__aprs_uj_text');
+                                        var ubtn = document.getElementById('__aprs_uj_btn');
+                                        if (ub2 && txt && ubtn) {
+                                            txt.textContent = '✅ Checked in to ' + _desktopUnjoinGroup + ' — unjoin when done?';
+                                            ubtn.textContent = 'U ' + _desktopUnjoinGroup;
+                                            ubtn.onclick = function() {
+                                                if (typeof openConversation === 'function') openConversation('ANSRVR');
+                                                setTimeout(function() {
+                                                    var ta3 = document.getElementById('msgText');
+                                                    if (ta3) { ta3.value = 'U ' + _desktopUnjoinGroup; }
+                                                    if (typeof sendMsg === 'function') sendMsg();
+                                                }, 150);
+                                                window.__aprsUnjoinDismiss();
+                                            };
+                                            ub2.style.display = 'flex';
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch(_) {}
+        };
+    }
+
+    setTimeout(injectNetsButton, 2500);
+    setTimeout(hookWsForUnjoin, 4000);
+
     // Apply preferences once the site has rendered its controls
     setTimeout(() => { applyPrefs(); }, 1500);
     // Re-apply after member panel may have loaded (mp-* checkboxes)
