@@ -1,5 +1,5 @@
 /**
- * APRS Client - desktop overlay v1.2.1
+ * APRS Client - desktop overlay v1.2.2
  * Injected by main.js into every aprsnet.uk page after load.
  *
  * Adds: desktop toolbar, auto member login, OS notifications,
@@ -63,6 +63,7 @@
             padding: '1px 7px', fontSize: '10px', fontWeight: '700',
             display: 'none', WebkitAppRegion: 'no-drag'
         });
+        unread.id = '__aprs_unread_badge';
         tb.unreadBadge = unread;
 
         const spacer = el('div', '', { flex: '1' });
@@ -151,23 +152,31 @@
             if (typeof window.logChat === 'function') {
                 const orig = window.logChat;
                 window.logChat = function (from, text, cls) {
-                    const myCall = s.callsign || window.myCallsign || '';
-                    if (from && typeof text === 'string' &&
-                        !text.toLowerCase().startsWith('ack') &&
-                        from.toUpperCase() !== myCall.toUpperCase() &&
-                        from.length > 2) {
-                        const now = Date.now();
-                        if (now - _lastNotifiedTs > 2000) {
-                            _lastNotifiedTs = now;
-                            ac.showNotification(
-                                from + ' \u2192 ' + (myCall || 'APRS'),
-                                text.replace(/[\r\n]+/g, ' ').substring(0, 120)
-                            );
-                            const tb = document.getElementById('__aprs_tb');
-                            if (tb && tb.unreadBadge) {
-                                const cur = parseInt(tb.unreadBadge.textContent) || 0;
-                                tb.unreadBadge.textContent = String(cur + 1);
-                                tb.unreadBadge.style.display = 'inline-block';
+                    // logChat is called with from="FROMCALL→TOCALL" for personal messages.
+                    // Only notify when the message is addressed to our callsign.
+                    // Sentinel values (ACK, SYS, CLIENT, SERVER, 🚨) are never personal messages.
+                    const myCall = (s.callsign || window.myCallsign || '').toUpperCase();
+                    const SENTINEL = /^(ACK|SYS|CLIENT|SERVER)$/i;
+                    if (myCall && from && typeof text === 'string' && !SENTINEL.test(from)) {
+                        const arrow = String(from).match(/^([A-Z0-9\-]+)\s*[\u2192>]\s*([A-Z0-9\-]+)$/i);
+                        if (arrow) {
+                            const fromCall = arrow[1].toUpperCase();
+                            const toCall   = arrow[2].toUpperCase();
+                            if (toCall === myCall && fromCall !== myCall) {
+                                const now = Date.now();
+                                if (now - _lastNotifiedTs > 2000) {
+                                    _lastNotifiedTs = now;
+                                    ac.showNotification(
+                                        fromCall + ' \u2192 ' + myCall,
+                                        text.replace(/[\r\n]+/g, ' ').substring(0, 120)
+                                    );
+                                    const tb = document.getElementById('__aprs_tb');
+                                    if (tb && tb.unreadBadge) {
+                                        const cur = parseInt(tb.unreadBadge.textContent) || 0;
+                                        tb.unreadBadge.textContent = String(cur + 1);
+                                        tb.unreadBadge.style.display = 'inline-block';
+                                    }
+                                }
                             }
                         }
                     }
