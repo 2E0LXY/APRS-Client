@@ -85,7 +85,7 @@ function createWindow() {
 
   // Allow geolocation requests from the website (for GPS positioning)
   mainWindow.webContents.session.setPermissionRequestHandler((wc, permission, cb) => {
-    if (permission === 'geolocation' || permission === 'notifications') return cb(true);
+    if (permission === 'geolocation' || permission === 'notifications' || permission === 'bluetooth') return cb(true);
     cb(false);
   });
 
@@ -117,6 +117,15 @@ function createWindow() {
       e.preventDefault();
       mainWindow.hide();
     }
+  });
+
+  // BLE device selection: required for Web Bluetooth in Electron.
+  // Auto-selects RT-950 Pro by name prefix; falls back to first device found.
+  mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
+    event.preventDefault();
+    if (!deviceList.length) { callback(''); return; }
+    const rt = deviceList.find(d => /RT-?950/i.test(d.deviceName || ''));
+    callback((rt || deviceList[0]).deviceId);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
