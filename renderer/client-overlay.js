@@ -1,5 +1,5 @@
 /**
- * APRS Client - desktop overlay v1.2.2
+ * APRS Client - desktop overlay v1.3.0
  * Injected by main.js into every aprsnet.uk page after load.
  *
  * Adds: desktop toolbar, auto member login, OS notifications,
@@ -71,7 +71,9 @@
         const discBtn = btn('\u2715 Disconnect', 'Return to connect screen',
             () => ac.goBack(), '#dc2626');
 
-        tb.append(logo, callBadge, wsDot, gpsDot, unread, spacer, settingsBtn, discBtn);
+        const bleBtn = btn('⚫ BLE', 'Connect BLE radio (RT-950 Pro)', () => toggleBLE());
+        bleBtn.id = '__aprs_ble_btn';
+        tb.append(logo, callBadge, wsDot, gpsDot, unread, spacer, bleBtn, settingsBtn, discBtn);
         document.body.appendChild(tb);
 
         /* Poll #conn-status for WS state — no site globals needed */
@@ -426,6 +428,169 @@
         };
     }
     setTimeout(hookWsAlerts, 3000); // Wait for WS to open and member auth to complete
+
+    /* ── 7. BLE RADIO (RT-950 PRO / KISS BLE) ─────────────────── */
+    // Connects to a Radtel RT-950 Pro (or compatible BLE KISS radio) via
+    // Bluetooth LE and feeds decoded APRS packets into the site renderer.
+    // Protocol credit: mecta02/aprs (reverse-engineered BLE UUIDs)
+    //   Service  : 0000FFE0-0000-1000-8000-00805F9B34FB
+    //   Notify   : 0000FFE1-0000-1000-8000-00805F9B34FB  (RX)
+    //   Framing  : KISS 0xC0/0xDB, L2: AX.25 UI ctrl=0x03 pid=0xF0
+
+    const _BLE_SVC = '0000ffe0-0000-1000-8000-00805f9b34fb';
+    const _BLE_RX  = '0000ffe1-0000-1000-8000-00805f9b34fb';
+    const _FEND = 0xC0, _FESC = 0xDB, _TFEND = 0xDC, _TFESC = 0xDD;
+    let _bleDev = null, _bleKissBuf = [], _blePktCount = 0;
+
+    function _kissExtract(buf) {
+        const frames = []; let fStart = -1;
+        for (let i = 0; i <= buf.length; i++) {
+            const b = i < buf.length ? buf[i] : _FEND;
+            if (b === _FEND) {
+                if (fStart >= 0 && i > fStart + 1) {
+                    const raw = [];
+                    for (let j = fStart + 1; j < i; j++) {
+                        if (buf[j] === _FESC && j + 1 < i) {
+                            j++;
+                            raw.push(buf[j] === _TFEND ? _FEND : buf[j] === _TFESC ? _FESC : buf[j]);
+                        } else { raw.push(buf[j]); }
+                    }
+                    if (raw.length >= 16) frames.push(Uint8Array.from(raw));
+                }
+                fStart = i;
+            }
+        }
+        return { frames, tail: fStart >= 0 ? buf.slice(fStart) : buf.slice(-512) };
+    }
+
+    function _ax25toAPRS(frame) {
+        if (!frame || frame.length < 17) return null;
+        let off = 0;
+        if ((frame[off] & 0x0F) !== 0x00) return null;
+        off++;
+        function decAddr(o) {
+            let c = '';
+            for (let i = 0; i < 6; i++) {
+                const ch = (frame[o + i] >> 1) & 0x7F;
+                if (ch > 0x20 && ch < 0x7F) c += String.fromCharCode(ch);
+            }
+            const sb = frame[o + 6];
+            return { call: c.trim() + (((sb >> 1) & 0x0F) ? '-' + ((sb >> 1) & 0x0F) : ''), last: !!(sb & 0x01), hBit: !!(sb & 0x80) };
+        }
+        if (off + 14 > frame.length) return null;
+        const dst = decAddr(off); off += 7;
+        const src = decAddr(off); off += 7;
+        const digis = []; let last = src.last;
+        while (!last && off + 7 <= frame.length) {
+            const dg = decAddr(off); off += 7;
+            digis.push(dg.call + (dg.hBit ? '*' : ''));
+            last = dg.last;
+        }
+        if (off + 2 > frame.length) return null;
+        if (frame[off++] !== 0x03 || frame[off++] !== 0xF0) return null;
+        const info = new TextDecoder('latin1').decode(frame.slice(off));
+        if (!info.trim()) return null;
+        return src.call + '>' + [dst.call, ...digis].join(',') + ':' + info;
+    }
+
+    function _parseMicEExtras(raw) {
+        try {
+            const ci = raw.indexOf(':'); if (ci < 0) return null;
+            const pay = raw.slice(ci + 1);
+            if ((pay[0] !== '`' && pay[0] !== "'") || pay.length < 7) return null;
+            const spB = pay.charCodeAt(4) - 28, dcB = pay.charCodeAt(5) - 28, seB = pay.charCodeAt(6) - 28;
+            let spd = spB * 10 + Math.floor(dcB / 10), hdg = (dcB % 10) * 100 + seB;
+            if (spd >= 800) spd -= 800; if (hdg >= 400) hdg -= 400;
+            const altM = pay.match(/([!-{]{3})\}/);
+            let alt_m = null;
+            if (altM) {
+                const a = altM[1];
+                alt_m = (a.charCodeAt(0)-33)*91*91 + (a.charCodeAt(1)-33)*91 + (a.charCodeAt(2)-33) - 10000;
+            }
+            return { spd_kmh: Math.round(spd * 1.852), hdg, alt_m };
+        } catch (_) { return null; }
+    }
+
+    function _bleInject(raw) {
+        if (!raw || raw.indexOf('>') < 1 || raw.indexOf(':') < 1) return;
+        _blePktCount++; _bleUpdateBtn();
+        if (typeof logChat === 'function') logChat('🔵', raw.substring(0, 80), 'text-cyan-400');
+        if (typeof handleIncoming === 'function') handleIncoming({ type: 'rx', packet: raw });
+        const ext = _parseMicEExtras(raw);
+        if (ext) { const call = raw.substring(0, raw.indexOf('>')); window.__bleMicEExtras = window.__bleMicEExtras || {}; window.__bleMicEExtras[call] = ext; }
+    }
+
+    function _bleUpdateBtn() {
+        const b = document.getElementById('__aprs_ble_btn'); if (!b) return;
+        const conn = _bleDev && _bleDev.gatt && _bleDev.gatt.connected;
+        b.textContent       = conn ? ('🔵 BLE (' + _blePktCount + ')') : '⚫ BLE';
+        b.title             = conn ? ('BLE: ' + _bleDev.name + ' — ' + _blePktCount + ' pkts. Click to disconnect.') : 'Connect BLE radio (RT-950 Pro / KISS BLE)';
+        b.style.borderColor = conn ? '#0ea5e9' : '#334155';
+        b.style.color       = conn ? '#38bdf8' : '#e2e8f0';
+    }
+
+    function _bleOnData(e) {
+        const bytes = Array.from(new Uint8Array(e.target.value.buffer));
+        _bleKissBuf = _bleKissBuf.concat(bytes);
+        if (_bleKissBuf.length > 16384) _bleKissBuf = _bleKissBuf.slice(-8192);
+        const { frames, tail } = _kissExtract(_bleKissBuf);
+        _bleKissBuf = tail;
+        frames.forEach(function(f) { const p = _ax25toAPRS(f); if (p) _bleInject(p); });
+    }
+
+    async function _bleConnect() {
+        if (!navigator.bluetooth) {
+            if (typeof logChat === 'function') logChat('BLE', 'Web Bluetooth not available', 'text-red-400');
+            return;
+        }
+        try {
+            const dev = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: 'RT-950' }, { namePrefix: 'RT950' }, { services: [_BLE_SVC] }],
+                optionalServices: [_BLE_SVC]
+            });
+            _bleDev = dev; _blePktCount = 0; _bleKissBuf = []; _bleUpdateBtn();
+            dev.addEventListener('gattserverdisconnected', function() {
+                _bleUpdateBtn();
+                if (typeof logChat === 'function') logChat('BLE', 'Radio disconnected — reconnecting in 8 s…', 'text-yellow-400');
+                setTimeout(async function() {
+                    if (!_bleDev) return;
+                    try {
+                        const srv = await _bleDev.gatt.connect();
+                        const svc = await srv.getPrimaryService(_BLE_SVC);
+                        const chr = await svc.getCharacteristic(_BLE_RX);
+                        chr.addEventListener('characteristicvaluechanged', _bleOnData);
+                        await chr.startNotifications();
+                        _bleUpdateBtn();
+                        if (typeof logChat === 'function') logChat('BLE', 'Reconnected to ' + _bleDev.name, 'text-cyan-400');
+                    } catch (_) { _bleUpdateBtn(); }
+                }, 8000);
+            });
+            const server = await dev.gatt.connect();
+            const svc    = await server.getPrimaryService(_BLE_SVC);
+            const chr    = await svc.getCharacteristic(_BLE_RX);
+            chr.addEventListener('characteristicvaluechanged', _bleOnData);
+            await chr.startNotifications();
+            _bleUpdateBtn();
+            if (typeof logChat === 'function') logChat('BLE', 'Connected to ' + dev.name, 'text-cyan-400');
+        } catch (err) {
+            const msg = (err.message || String(err)).substring(0, 100);
+            if (!msg.toLowerCase().includes('cancel') && !msg.includes('chosen')) {
+                if (typeof logChat === 'function') logChat('BLE', 'Error: ' + msg, 'text-red-400');
+            }
+            _bleUpdateBtn();
+        }
+    }
+
+    function _bleDisconnect() {
+        if (_bleDev && _bleDev.gatt && _bleDev.gatt.connected) _bleDev.gatt.disconnect();
+        _bleDev = null; _bleKissBuf = []; _blePktCount = 0; _bleUpdateBtn();
+        if (typeof logChat === 'function') logChat('BLE', 'Disconnected', 'text-gray-400');
+    }
+
+    function toggleBLE() {
+        if (_bleDev && _bleDev.gatt && _bleDev.gatt.connected) _bleDisconnect();
+        else _bleConnect();
+    }
 
     /* ── Net quick check-in ───────────────────────────────────────────────── */
     var KNOWN_NETS_DESKTOP = [
