@@ -136,6 +136,27 @@
             const d = await r.json();
             if (!d.token) return;
             window.__memberToken = d.token;
+
+            // Hydrate the page's _memberSession if not already set (overlay auto-login path).
+            // Without this, loadMemberPreferences() is never called and msg_background/filters
+            // are never applied when the desktop app launches.
+            if (!window._memberSession) {
+                window._memberSession = {
+                    token:     d.token,
+                    callsign:  d.callsign,
+                    name:      d.name,
+                    passcode:  d.passcode,
+                    callsigns: d.callsigns || [],
+                    watchlist: d.watchlist || [],
+                    unread:    d.unread_messages || 0
+                };
+                if (typeof window.updateMemberBtn         === 'function') window.updateMemberBtn();
+                if (typeof window.mergeWatchlists         === 'function') window.mergeWatchlists(d.watchlist || []);
+                if (typeof window.autoFillAPRSCredentials === 'function') window.autoFillAPRSCredentials();
+                // Fetch all server-side preferences (msg_background, map filters, wx settings, etc.)
+                if (typeof window.loadMemberPreferences   === 'function') window.loadMemberPreferences();
+            }
+
             if (typeof window.onMemberLoginSuccess === 'function') {
                 window.onMemberLoginSuccess(d);
             }
