@@ -49,43 +49,26 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Build Windows installers
+      - name: Build Windows package
         run: npm run build:win -- --publish never
 
-      - name: Smoke test Windows MSI
+      - name: Smoke test Windows zip
         shell: pwsh
         run: |
-          $installer = Get-ChildItem dist -Filter "*.msi" | Select-Object -First 1
-          if (-not $installer) { throw "No Windows MSI installer was produced." }
-          $log = Join-Path $env:TEMP "aprsnet-desktop-msi.log"
-          $process = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", "`"$($installer.FullName)`"", "/qn", "/norestart", "ALLUSERS=2", "MSIINSTALLPERUSER=1", "/L*v", "`"$log`"") -PassThru
-          if (-not $process.WaitForExit(120000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            if (Test-Path $log) { Get-Content $log -Tail 120 }
-            throw "MSI install timed out after 120 seconds."
-          }
-          if ($process.ExitCode -ne 0) { throw "Installer failed with exit code $($process.ExitCode)." }
-          $paths = @(
-            Join-Path $env:ProgramFiles "APRSNET Desktop"
-            Join-Path $env:LOCALAPPDATA "Programs\APRSNET Desktop"
-            Join-Path $env:LOCALAPPDATA "Programs\aprsnet-desktop"
-            Join-Path $env:LOCALAPPDATA "APRSNET Desktop"
-            Join-Path $env:LOCALAPPDATA "aprsnet-desktop"
-          )
-          $app = Get-ChildItem -Path $paths -Filter "APRSNET Desktop.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $app) {
-            $uninstall = Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* , HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue |
-              Where-Object { $_.DisplayName -eq "APRSNET Desktop" } |
-              Select-Object -First 1
-            if ($uninstall.InstallLocation) {
-              $app = Get-ChildItem -Path $uninstall.InstallLocation -Filter "APRSNET Desktop.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            }
-          }
-          if (-not $app) {
-            Write-Host "APRS-related folders under LOCALAPPDATA:"
-            Get-ChildItem -Path $env:LOCALAPPDATA -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "APRS|aprs" } | Select-Object FullName
-            if (Test-Path $log) { Get-Content $log -Tail 80 }
-            throw "Installer completed but APRSNET Desktop.exe was not found. MSI log: $log"
+          $zip = Get-ChildItem dist -Filter "*.zip" | Select-Object -First 1
+          if (-not $zip) { throw "No Windows zip package was produced." }
+          $extract = Join-Path $env:TEMP "aprsnet-desktop-zip-smoke"
+          Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $zip.FullName -DestinationPath $extract -Force
+          $app = Get-ChildItem -Path $extract -Filter "APRSNET Desktop.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $app) { throw "Windows zip did not contain APRSNET Desktop.exe." }
+          $portable = Get-ChildItem dist -Filter "APRSNET.Desktop.Portable.*.exe" | Select-Object -First 1
+          if (-not $portable) { throw "No Windows portable executable was produced." }
+          $parseErrors = $null
+          $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content scripts\install-windows.ps1 -Raw), [ref]$parseErrors)
+          if ($parseErrors) {
+            $parseErrors | Format-List *
+            throw "Windows installer script failed PowerShell syntax validation."
           }
 
       - name: Upload Windows artifacts
@@ -93,8 +76,9 @@ jobs:
         with:
           name: aprsnet-desktop-windows
           path: |
-            dist/*.msi
+            dist/*.zip
             dist/*.exe
+            scripts/install-windows.ps1
           if-no-files-found: warn
 
   release:
