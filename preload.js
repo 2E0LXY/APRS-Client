@@ -1,9 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Bridge between the sandboxed web page and the Electron main process.
-// Everything the website's injected overlay can do is listed here.
+// Bridge between the sandboxed local renderer and the Electron main process.
 contextBridge.exposeInMainWorld('aprsClient', {
-  // Settings (includes website appearance preferences)
+  // Settings
   getSettings:      ()        => ipcRenderer.invoke('get-settings'),
   saveSettings:     (s)       => ipcRenderer.invoke('save-settings', s),
 

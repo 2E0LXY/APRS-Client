@@ -1,6 +1,6 @@
 # APRS Client
 
-Cross-platform desktop client for [aprsnet.uk](https://www.aprsnet.uk) — Windows 10/11 and Debian/Ubuntu Linux.
+Cross-platform desktop client for [aprsnet.uk](https://www.aprsnet.uk) - Windows 10/11 and Debian/Ubuntu Linux.
 
 Built with Electron as an installable native desktop shell. The client loads a local APRSNET renderer rather than wrapping the website, while using APRSNET REST and WebSocket APIs for live traffic, messaging, station data, weather, analytics, and transmit workflows.
 
@@ -12,7 +12,7 @@ Built with Electron as an installable native desktop shell. The client loads a l
 
 ## Also available on
 
-![APRS Net — all platforms](docs/platforms.svg)
+![APRS Net - all platforms](docs/platforms.svg)
 
 | Platform | Repository | Download |
 |----------|------------|----------|
@@ -25,8 +25,8 @@ Built with Electron as an installable native desktop shell. The client loads a l
 ## Download
 
 See [Releases](https://github.com/2E0LXY/APRS-Client/releases) for:
-- `APRS.Client.Setup.x.x.x.exe` — Windows 10/11 NSIS installer
-- `aprs-client_x.x.x_amd64.deb` — Debian/Ubuntu package
+- `APRS.Client.Setup.x.x.x.exe` - Windows 10/11 NSIS installer
+- `aprs-client_x.x.x_amd64.deb` - Debian/Ubuntu package
 
 ---
 
@@ -34,41 +34,41 @@ See [Releases](https://github.com/2E0LXY/APRS-Client/releases) for:
 
 ### Native APRSNET Desktop Dashboard
 
-The app runs its own local renderer and connects directly to APRSNET:
+The app runs its own local renderer and connects directly to APRSNET. This is not an AI app and not a browser wrapper.
 
-- Live APRS station map with clustering, trails, PHG range circles, solar day/night terminator
-- TOCALL-based station classification (LoRa, MMDVM/DMR, OGN, CWOP weather)
-- Station type filters and sub-filters; station ghosting; auto-fit zoom
-- **Smart search** (Ctrl+K) — searches callsigns, comments, messages, devices
-- **Time-lapse replay** — rewinds station history at 10×–240× speed
-- Station detail modal with history, packet log, path tabs, QRZ.com profile
-- **Messages centre** — conversations inbox sidebar, thread view, compose bar, 5-row traffic log
-- Weather dashboard, UK Met Office severe weather warnings, animated RainViewer rain radar
-- Propagation analytics, activity and coverage meters, activity heatmap
-- ISS / ARISS live position and pass countdown
-- Utilities: passcode calculator, Maidenhead converter, beacon generator, symbol picker
-- Admin panel: full server configuration, API keys, webhooks, audit log, ban list, backup/restore
-- **Geo-fence Alerts panel** — create and manage server-side enter/exit rules
-- **Member settings panel** — quiet hours, map filter preferences, **Ecowitt weather station** configuration (API keys, MAC, beacon interval, WX SSID, pressure source, optional comment fields, Test Connection button)
+Current desktop foundation:
+
+- Dashboard with live APRSNET status, packet feed, active stations, and recent messages
+- Tactical canvas map powered by APRSNET GeoJSON/API data
+- Direct APRSNET WebSocket feed for live packets, objects, alerts, and message replay
+- REST API proxy in the Electron main process for `/api/*` calls
+- Authenticated APRS message, position beacon, object, and raw packet transmit workflows
+- Weather, analytics, member login, GPS/manual position, and settings panels
+
+Planned replacement scope:
+
+- Full feature parity with the APRSNET website map, messaging, weather, analytics, admin, sync, and utility tools
+- Desktop-native navigation, keyboard shortcuts, tray actions, and notifications
+- Windows installer and Debian package builds from the same codebase
 
 ### Desktop Integration
 
 The app provides native desktop behaviour:
 
-- **Native dashboard shell** — local renderer with dashboard, tactical map, messages, beacon/object tools, weather, analytics, and settings views
-- **APRSNET API proxy** — the Electron main process brokers REST API calls to APRSNET without embedding the website
-- **Live WebSocket feed** — the renderer connects directly to APRSNET `/ws` for packets, objects, alerts, and message replay
-- **Authenticated transmit tools** — APRS message, position beacon, object, and raw packet workflows preview packets before sending
-- **Native OS notifications** — incoming APRS messages can trigger Windows/Linux system notifications via the Electron main process
-- **Auto member login** — signs in to the APRSNET member API using saved credentials for member-backed features
-- **GPS/manual position support** — uses OS/browser geolocation or configured manual coordinates for beacon workflows
+- **Native dashboard shell** - local renderer with dashboard, tactical map, messages, beacon/object tools, weather, analytics, and settings views
+- **APRSNET API proxy** - the Electron main process brokers REST API calls to APRSNET without embedding the website
+- **Live WebSocket feed** - the renderer connects directly to APRSNET `/ws` for packets, objects, alerts, and message replay
+- **Authenticated transmit tools** - APRS message, position beacon, object, and raw packet workflows preview packets before sending
+- **Native OS notifications** - incoming APRS messages can trigger Windows/Linux system notifications via the Electron main process
+- **Auto member login** - signs in to the APRSNET member API using saved credentials for member-backed features
+- **GPS/manual position support** - uses OS/browser geolocation or configured manual coordinates for beacon workflows
 
 ### System Integration
 
 - System tray icon with context menu: Open, Reload, Disconnect, Quit
 - Minimise to tray on window close (configurable)
 - Launch on Windows startup with optional start-minimised mode
-- Single-instance lock — re-launching focuses the existing window rather than opening a second
+- Single-instance lock - re-launching focuses the existing window rather than opening a second
 
 ---
 
@@ -86,7 +86,7 @@ The native desktop dashboard opens and connects to APRSNET.
 
 ## Settings
 
-Click ⚙ in the toolbar to open the Desktop Settings dialog:
+Click Settings in the toolbar to open the Desktop Settings dialog:
 
 | Setting | Description |
 |---------|-------------|
@@ -94,7 +94,7 @@ Click ⚙ in the toolbar to open the Desktop Settings dialog:
 | Minimise to tray | Window close minimises rather than quits |
 | Launch on startup | Register with OS startup items |
 | Auto-connect | Skip the connect screen on launch |
-| Theme | Dark / Light — applied to the site on every page load |
+| Theme | Dark / Light - applied to the native desktop interface |
 
 Full settings (callsign, passcode, member account, GPS source, appearance) are on the connect screen.  
 All settings are stored in `settings.json` in the Electron `userData` folder.
@@ -107,12 +107,12 @@ The desktop client participates in the same cross-device sync as Android and iOS
 
 | What syncs | Trigger | Direction |
 |------------|---------|-----------|
-| Map filter preferences | Login (auto) | Server → Desktop |
-| Map filter preferences | Any checkbox change | Desktop → Server → All devices |
-| Message history | Login (auto) | Server → Desktop (via `loadMemberMessages()`) |
-| New messages | Real-time | All devices → Server → Desktop (WS `rx` packet) |
-| Settings changes | Any save | Any device → Server → Desktop (`member_sync` WS push) |
-| Ecowitt WX config | Settings save | Desktop → Server → All devices |
+| Map filter preferences | Login (auto) | Server -> Desktop |
+| Map filter preferences | Any checkbox change | Desktop -> Server -> All devices |
+| Message history | Login (auto) | Server -> Desktop (via `loadMemberMessages()`) |
+| New messages | Real-time | All devices -> Server -> Desktop (WS `rx` packet) |
+| Settings changes | Any save | Any device -> Server -> Desktop (`member_sync` WS push) |
+| Ecowitt WX config | Settings save | Desktop -> Server -> All devices |
 
 ---
 
@@ -145,22 +145,19 @@ Every push to `main` builds installers; pushing a `v*` tag publishes them as a R
 ## Architecture
 
 ```
-main.js              — Electron main: BrowserWindow, tray, IPC, APRSNET API proxy, GPS store,
+main.js              - Electron main: BrowserWindow, tray, IPC, APRSNET API proxy, GPS store,
                        single-instance lock, launch-on-startup
-preload.js           — contextBridge: exposes aprsClient API to local renderer
+preload.js           - contextBridge: exposes aprsClient API to local renderer
 renderer/
-  connect.html       — Connection / settings screen (callsign, passcode, member, GPS)
-  native.html        — Local native APRSNET dashboard shell
-  native.css         — Desktop dashboard styling
-  native-app.js      — REST/WebSocket client, live station state, TX tools
-  client-overlay.js  — Legacy compatibility overlay for the old website-wrapper mode
-                         • theme application
-                         • member_sync WS event handling
+  connect.html       - Connection / settings screen (callsign, passcode, member, GPS)
+  native.html        - Local native APRSNET dashboard shell
+  native.css         - Desktop dashboard styling
+  native-app.js      - REST/WebSocket client, live station state, TX tools
 assets/
   icon.png / icon.ico / icon.svg
 ```
 
-The overlay never modifies the server — it drives the site's own DOM controls, so it remains fully compatible with any server update.
+The desktop client does not inject code into the APRSNET website. The renderer is local and talks to APRSNET through REST and WebSocket APIs.
 
 ---
 
@@ -168,14 +165,12 @@ The overlay never modifies the server — it drives the site's own DOM controls,
 
 | Version | Changes |
 |---------|---------|
-| v1.2.2 | Geo-fence alert hook in overlay — forwards `alert` WS events to Electron `ipcRenderer` for native OS notification |
-| v1.2.1 | Fix WS state dot (reads `#conn-status` DOM correctly); two-way filter persistence via change listeners on all 21 checkboxes |
-| v1.2.0 | `client-overlay.js` — desktop toolbar, auto member login, OS notifications, GPS forwarding, preference application |
-| v1.1.0 | Single sign-on, appearance memory, GPS map marker, quick message composer, launch on startup, single-instance lock |
-| v1.0.x | Initial release — Electron wrapper, system tray, native notifications, connect screen |
+| v1.3.2 | Removes the legacy website overlay path; native renderer is the only client surface |
+| v1.3.1 | Native APRSNET desktop foundation: local renderer, API proxy, WebSocket feed, map, messaging, weather, analytics, and TX tools |
+| v1.0.x | Initial Electron desktop shell, system tray, native notifications, connect screen |
 
 ---
 
 ## Licence
 
-GNU General Public Licence v3 — © 2026 Daren Loxley 2E0LXY
+GNU General Public Licence v3 - (c) 2026 Daren Loxley 2E0LXY

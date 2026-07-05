@@ -3,23 +3,21 @@ const path = require('path');
 const fs   = require('fs');
 const https = require('https');
 
-// ─── Hard-coded server (this app only ever talks to aprsnet.uk) ───────────────
+// Hard-coded server endpoint.
 const SERVER_URL = 'https://www.aprsnet.uk';
 const WS_URL     = 'wss://www.aprsnet.uk/ws';
 
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 
-// Settings now also remember the user's website preferences so the client can
-// re-apply them every time the site loads (dark mode, map style, filters etc).
 const defaultSettings = {
   // Account / connection
   callsign:        '',
   passcode:        '',
-  memberUser:      '',          // website member account username
-  memberPass:      '',          // website member account password
+  memberUser:      '',          // APRSNET member account username
+  memberPass:      '',          // APRSNET member account password
   memberToken:     '',          // APRSNET member API session token
   autoConnect:     true,
-  autoMemberLogin: true,        // auto sign-in to the website member account
+  autoMemberLogin: true,        // auto sign-in to the APRSNET member account
   minimizeToTray:  true,
   notifications:   true,
   startMinimized:  false,
@@ -32,7 +30,7 @@ const defaultSettings = {
   beaconToMap:     true,        // show my location marker on the map
   beaconIntervalMin: 10,        // how often to refresh the position marker
 
-  // Website appearance preferences (re-applied on every page load)
+  // APRSNET desktop preferences
   prefTheme:       'dark',      // 'dark' | 'light'
   prefMapStyle:    '',          // '' = leave site default, else value for #map-style
   prefFilters:     {},          // { 'show-aprs': true, 'show-cwop': false, ... }
@@ -40,7 +38,7 @@ const defaultSettings = {
   prefGhost:       null,
   prefPropLines:   null,
   prefWxRadar:     null,
-  prefsSynced:     false        // has the user saved website prefs at least once
+  prefsSynced:     false        // has the user saved APRSNET prefs at least once
 };
 
 function loadSettings() {
@@ -74,7 +72,7 @@ function openSafeExternal(rawUrl) {
   return false;
 }
 
-// ─── Main window ──────────────────────────────────────────────────────────────
+// Main window.
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440, height: 900,
@@ -94,7 +92,7 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'connect.html'));
 
-  // Allow geolocation requests from the website (for GPS positioning)
+  // Allow geolocation requests for GPS positioning in the local renderer.
   mainWindow.webContents.session.setPermissionRequestHandler((wc, permission, cb) => {
     if (permission === 'geolocation' || permission === 'notifications' || permission === 'bluetooth') return cb(true);
     cb(false);
@@ -105,23 +103,12 @@ function createWindow() {
     mainWindow.webContents.send('settings', settings);
   });
 
-  // Inject the client overlay into every server page after it loads
   mainWindow.webContents.on('did-finish-load', () => {
     const url = mainWindow.webContents.getURL();
     const isLocalPage = url.startsWith('file://');
     const isLocalConnect = isLocalPage && url.includes('connect.html');
     isOnConnectScreen = isLocalConnect;
-
-    if (!isLocalPage) {
-      const overlayPath = path.join(__dirname, 'renderer', 'client-overlay.js');
-      if (fs.existsSync(overlayPath)) {
-        const code = fs.readFileSync(overlayPath, 'utf8');
-        mainWindow.webContents.executeJavaScript(code).catch(e => {
-          console.warn('Overlay inject failed:', e.message);
-        });
-      }
-      mainWindow.setTitle((settings.callsign ? settings.callsign + ' — ' : '') + 'APRS Client');
-    }
+    mainWindow.setTitle((settings.callsign ? settings.callsign + ' - ' : '') + 'APRS Client');
   });
 
   mainWindow.on('close', (e) => {
@@ -153,12 +140,12 @@ function createWindow() {
   });
 }
 
-// ─── System tray ──────────────────────────────────────────────────────────────
+// System tray.
 function createTray() {
   try {
     const img = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png'));
     tray = new Tray(img.resize({ width: 16, height: 16 }));
-    tray.setToolTip('APRS Client — ' + (settings.callsign || 'Not connected'));
+    tray.setToolTip('APRS Client - ' + (settings.callsign || 'Not connected'));
     tray.on('click', () => { mainWindow && (mainWindow.show(), mainWindow.focus()); });
     updateTrayMenu();
   } catch (e) { console.warn('Tray failed:', e.message); }
@@ -167,7 +154,7 @@ function createTray() {
 function updateTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: settings.callsign ? settings.callsign + ' — APRS Client' : 'APRS Client', enabled: false },
+    { label: settings.callsign ? settings.callsign + ' - APRS Client' : 'APRS Client', enabled: false },
     { type: 'separator' },
     { label: 'Open', click: () => { mainWindow && (mainWindow.show(), mainWindow.focus()); } },
     { label: 'Reload', click: () => { mainWindow && mainWindow.webContents.reload(); } },
@@ -185,7 +172,7 @@ function goToConnectScreen() {
   setTimeout(() => mainWindow.webContents.send('settings', settings), 500);
 }
 
-// ─── Launch-on-startup ────────────────────────────────────────────────────────
+// Launch-on-startup.
 function applyLaunchOnStartup(enabled) {
   try {
     app.setLoginItemSettings({
@@ -195,21 +182,21 @@ function applyLaunchOnStartup(enabled) {
   } catch (e) {}
 }
 
-// ─── IPC ──────────────────────────────────────────────────────────────────────
+// IPC.
 ipcMain.handle('get-settings', () => settings);
 
 ipcMain.handle('save-settings', (e, s) => {
   settings = Object.assign({}, settings, s);
   saveSettings(settings);
   updateTrayMenu();
-  if (tray) tray.setToolTip('APRS Client — ' + (settings.callsign || 'Not connected'));
+  if (tray) tray.setToolTip('APRS Client - ' + (settings.callsign || 'Not connected'));
   applyLaunchOnStartup(settings.launchOnStartup);
   // Push the fresh settings back into whatever page is loaded
   if (mainWindow) mainWindow.webContents.send('settings', settings);
   return settings;
 });
 
-// The website is fixed - the client always connects to aprsnet.uk
+// The APRSNET endpoint is fixed - the client always connects to aprsnet.uk.
 ipcMain.handle('get-server', () => ({ url: SERVER_URL, ws: WS_URL }));
 
 ipcMain.handle('connect-to-server', () => {
@@ -257,7 +244,7 @@ ipcMain.handle('api-request', (e, req = {}) => new Promise((resolve) => {
   request.end();
 }));
 
-// Position: the overlay asks the main process for the latest position.
+// Position: the renderer asks the main process for the latest position.
 // In GPS mode it returns whatever the renderer last reported; in manual mode
 // it returns the configured coordinates.
 ipcMain.handle('get-position', () => {
@@ -294,7 +281,7 @@ ipcMain.handle('probe-server', () => new Promise((resolve) => {
   req.on('timeout', () => { req.destroy(); resolve({ ok: false }); });
 }));
 
-// ─── App lifecycle ────────────────────────────────────────────────────────────
+// App lifecycle.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
