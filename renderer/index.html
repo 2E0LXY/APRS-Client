@@ -116,28 +116,6 @@
           </div>
           <div id="map-attribution">OpenStreetMap</div>
         </div>
-        <section class="geofence-panel">
-          <div class="panel-head">
-            <div><h2>Geo-fence Rules</h2><p>Synced with APRSNET member geo-fence alerts.</p></div>
-            <button id="refresh-geofences" type="button">Refresh</button>
-          </div>
-          <div class="row">
-            <label>Name<input id="gf-name" placeholder="Home area"></label>
-            <label>Callsign<input id="gf-call" placeholder="* or callsign"></label>
-            <label>Type<select id="gf-type"><option value="geofence_enter">Enter zone</option><option value="geofence_exit">Leave zone</option></select></label>
-            <label>Radius mi<input id="gf-radius" value="10"></label>
-          </div>
-          <div class="row">
-            <label>Latitude<input id="gf-lat"></label>
-            <label>Longitude<input id="gf-lon"></label>
-          </div>
-          <div class="tools settings-actions">
-            <button id="gf-use-map" type="button">Use Selected Station</button>
-            <button id="gf-add" type="button" class="primary">Add Synced Rule</button>
-            <span id="gf-state" class="inline-state">Sign in as member to sync rules</span>
-          </div>
-          <div id="geofence-list" class="geofence-list"></div>
-        </section>
       </section>
     </section>
 
@@ -238,6 +216,28 @@
           <button id="save-settings" class="primary">Save Settings</button>
           <span id="settings-save-state" class="inline-state">Not saved this session</span>
         </div>
+      </section>
+      <section class="panel form settings geofence-panel">
+        <div class="panel-head">
+          <div><h2>Geo-fence Rules</h2><p>Synced with APRSNET member geo-fence alerts.</p></div>
+          <button id="refresh-geofences" type="button">Refresh</button>
+        </div>
+        <div class="row">
+          <label>Name<input id="gf-name" placeholder="Home area"></label>
+          <label>Callsign<input id="gf-call" placeholder="* or callsign"></label>
+          <label>Type<select id="gf-type"><option value="geofence_enter">Enter zone</option><option value="geofence_exit">Leave zone</option></select></label>
+          <label>Radius mi<input id="gf-radius" value="10"></label>
+        </div>
+        <div class="row">
+          <label>Latitude<input id="gf-lat"></label>
+          <label>Longitude<input id="gf-lon"></label>
+        </div>
+        <div class="tools settings-actions">
+          <button id="gf-use-map" type="button">Use Selected Station</button>
+          <button id="gf-add" type="button" class="primary">Add Synced Rule</button>
+          <span id="gf-state" class="inline-state">Sign in as member to sync rules</span>
+        </div>
+        <div id="geofence-list" class="geofence-list"></div>
       </section>
     </section>
   </main>

@@ -1,6 +1,6 @@
 {
   "name": "aprsnet-desktop",
-  "version": "1.3.16",
+  "version": "1.3.17",
   "description": "Native APRSNET.UK desktop client for Windows and Debian",
   "main": "main.js",
   "author": "Daren Loxley 2E0LXY",
