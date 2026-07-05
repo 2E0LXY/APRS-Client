@@ -68,9 +68,25 @@ jobs:
           $paths = @(
             Join-Path $env:ProgramFiles "APRSNET Desktop"
             Join-Path $env:LOCALAPPDATA "Programs\APRSNET Desktop"
+            Join-Path $env:LOCALAPPDATA "Programs\aprsnet-desktop"
+            Join-Path $env:LOCALAPPDATA "APRSNET Desktop"
+            Join-Path $env:LOCALAPPDATA "aprsnet-desktop"
           )
           $app = Get-ChildItem -Path $paths -Filter "APRSNET Desktop.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $app) { throw "Installer completed but APRSNET Desktop.exe was not found. MSI log: $log" }
+          if (-not $app) {
+            $uninstall = Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* , HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue |
+              Where-Object { $_.DisplayName -eq "APRSNET Desktop" } |
+              Select-Object -First 1
+            if ($uninstall.InstallLocation) {
+              $app = Get-ChildItem -Path $uninstall.InstallLocation -Filter "APRSNET Desktop.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+          }
+          if (-not $app) {
+            Write-Host "APRS-related folders under LOCALAPPDATA:"
+            Get-ChildItem -Path $env:LOCALAPPDATA -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "APRS|aprs" } | Select-Object FullName
+            if (Test-Path $log) { Get-Content $log -Tail 80 }
+            throw "Installer completed but APRSNET Desktop.exe was not found. MSI log: $log"
+          }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
