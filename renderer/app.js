@@ -18,6 +18,12 @@ const call = (value) => clean(value).toUpperCase();
 const baseCall = (value) => call(value).split('-')[0];
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
+function coordValue(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function age(ts) {
   if (!ts) return '-';
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - Number(ts)));
@@ -42,9 +48,9 @@ function distanceKm(aLat, aLon, bLat, bLon) {
 }
 
 function userLocation() {
-  const lat = Number(state.settings.manualLat);
-  const lon = Number(state.settings.manualLon);
-  if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon, source: 'saved manual location' };
+  const lat = coordValue(state.settings.manualLat);
+  const lon = coordValue(state.settings.manualLon);
+  if (lat !== null && lon !== null) return { lat, lon, source: 'saved manual location' };
   if (state.userLocation) return state.userLocation;
   return null;
 }
@@ -69,9 +75,9 @@ function source(ssid = '') {
 }
 
 function encodeCoord(latValue, lonValue) {
-  const lat = Number(latValue);
-  const lon = Number(lonValue);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+  const lat = coordValue(latValue);
+  const lon = coordValue(lonValue);
+  if (lat === null || lon === null || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
     throw new Error('Valid latitude and longitude are required.');
   }
   const latDeg = Math.floor(Math.abs(lat));
@@ -156,13 +162,13 @@ async function loadMessages() {
   const response = await api(state.settings.memberToken ? '/api/member/messages' : '/api/messages');
   if (!response.ok) return;
   const rows = Array.isArray(response.data) ? response.data : (response.data?.messages || []);
-  state.messages = rows.slice(-250).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  state.messages = mergeMessages([...state.messages, ...rows]);
   renderMessages();
 }
 
 async function loadWeather() {
-  await ensureUserLocation();
   renderWeatherStations();
+  ensureUserLocation().then(renderWeatherStations);
 }
 
 async function loadAnalytics() {
@@ -275,20 +281,28 @@ async function verifyMemberLogin(options = {}) {
 }
 
 function connectWebSocket() {
-  if (state.ws) state.ws.close();
-  state.ws = new WebSocket(state.server.ws);
+  if (state.ws) {
+    state.ws.aprsnetManualClose = true;
+    state.ws.close();
+  }
+  const socket = new WebSocket(state.server.ws);
+  state.ws = socket;
   setPill('ws-state', 'warn', 'WS connecting');
-  state.ws.addEventListener('open', () => {
+  socket.addEventListener('open', () => {
     setPill('ws-state', 'ok', 'WS live');
     authWebSocket();
   });
-  state.ws.addEventListener('close', () => {
+  socket.addEventListener('close', () => {
     state.authed = false;
+    if (socket.aprsnetManualClose) return;
     setPill('ws-state', 'bad', 'WS offline');
     setPill('auth-state', 'warn', 'RX only');
     setTimeout(connectWebSocket, 3000);
   });
-  state.ws.addEventListener('message', event => {
+  socket.addEventListener('error', () => {
+    setPill('ws-state', 'bad', 'WS error');
+  });
+  socket.addEventListener('message', event => {
     let message;
     try { message = JSON.parse(event.data); } catch (err) { return; }
     if (message.type === 'auth_ack') {
@@ -296,7 +310,12 @@ function connectWebSocket() {
       setPill('auth-state', state.authed ? 'ok' : 'warn', state.authed ? `TX ${message.callsign || state.settings.callsign}` : 'RX only');
       return;
     }
-    if (['rx', 'obj', 'sys', 'alert', 'tx'].includes(message.type)) addPacket(message.packet || message.message || JSON.stringify(message), message.type);
+    if (['rx', 'obj', 'sys', 'alert', 'tx'].includes(message.type)) {
+      const packet = message.packet || message.message || JSON.stringify(message);
+      addPacket(packet, message.type);
+      const parsed = parseAprsMessagePacket(packet, message.type === 'tx' ? 'out' : '');
+      if (parsed) appendMessage(parsed);
+    }
     if ((message.type === 'rx' || message.type === 'obj') && message.data) {
       const item = message.data;
       const stationCall = item.call || item.callsign;
@@ -322,6 +341,7 @@ function authWebSocket() {
 }
 
 function addPacket(packet, type) {
+  if (state.packets.some(item => item.packet === packet && item.type === type && Date.now() - item.ts < 10000)) return;
   state.packets.unshift({ packet, type, ts: Date.now() });
   state.packets = state.packets.slice(0, 150);
   state.packetTimes.push(Date.now());
@@ -332,6 +352,27 @@ function addPacket(packet, type) {
 
 function renderPackets() {
   $('packet-feed').innerHTML = state.packets.map(item => `<div class="feed-row"><header><span>${esc(item.type)}</span><span>${new Date(item.ts).toLocaleTimeString()}</span></header><code>${esc(item.packet)}</code></div>`).join('') || '<div class="feed-row">Waiting for APRSNET packets...</div>';
+}
+
+function parseAprsMessagePacket(packet, direction = '') {
+  const match = String(packet || '').match(/^([^>]+)>.*::(.{9}):(.*)$/);
+  if (!match) return null;
+  const from = call(match[1]);
+  const to = call(match[2]);
+  let text = match[3] || '';
+  const idMatch = text.match(/\{([A-Za-z0-9]{1,5})$/);
+  const id = idMatch ? idMatch[1] : '';
+  if (idMatch) text = text.slice(0, -idMatch[0].length);
+  const mine = baseCall(state.settings.callsign);
+  return {
+    id: `${from}-${to}-${id || text}-${Math.round(Date.now() / 1000)}`,
+    from,
+    to,
+    text,
+    ts: Math.round(Date.now() / 1000),
+    direction: direction || (mine && baseCall(to) === mine ? 'in' : ''),
+    raw: packet
+  };
 }
 
 function normaliseMessage(item) {
@@ -345,6 +386,25 @@ function normaliseMessage(item) {
     read: item.read !== false,
     raw: item.raw || item.packet || ''
   };
+}
+
+function mergeMessages(rows) {
+  const merged = [];
+  for (const row of rows.map(normaliseMessage).sort((a, b) => a.ts - b.ts)) {
+    const duplicate = merged.some(existing =>
+      existing.from === row.from &&
+      existing.to === row.to &&
+      existing.text === row.text &&
+      Math.abs(existing.ts - row.ts) < 90
+    );
+    if (!duplicate) merged.push(row);
+  }
+  return merged.slice(-250);
+}
+
+function appendMessage(message) {
+  state.messages = mergeMessages([...state.messages, message]);
+  renderMessages();
 }
 
 function conversationPeer(message) {
@@ -388,6 +448,7 @@ function renderMessages() {
       return `<div class="bubble ${outgoing ? 'out' : 'in'}"><div>${esc(message.text)}</div><div class="bubble-meta">${esc(message.from || '?')} to ${esc(message.to || '?')} - ${formatClock(message.ts)}</div></div>`;
     }).join('')
     : '<div class="bubble system">Choose a conversation on the left.</div>';
+  $('message-feed').scrollTop = $('message-feed').scrollHeight;
 }
 
 function renderStations() {
@@ -404,7 +465,7 @@ function parseWXPacket(raw) {
   const payload = raw.slice(colon + 1);
   if (!/[tcbshgrpLl]\d{2,5}/.test(payload)) return null;
   const wx = {};
-  const temp = payload.match(/t([-+]?\d{3})/);
+  const temp = payload.match(/t([-+]?\d{2,3})/);
   if (temp && temp[1] !== '...') wx.tempC = Math.round((parseInt(temp[1], 10) - 32) * 5 / 9);
   const humidity = payload.match(/h(\d{2})/);
   if (humidity) wx.humidity = parseInt(humidity[1], 10) === 0 ? 100 : parseInt(humidity[1], 10);
@@ -414,6 +475,9 @@ function parseWXPacket(raw) {
   if (windDir && windDir[1] !== '...') wx.windDir = parseInt(windDir[1], 10);
   const windSpd = payload.match(/s(\d{3})/);
   if (windSpd && windSpd[1] !== '...') wx.windSpd = Math.round(parseInt(windSpd[1], 10) * 1.60934);
+  const nativeWind = payload.match(/(?:^|_)(\d{3})\/(\d{3})/);
+  if (nativeWind && wx.windDir === undefined) wx.windDir = parseInt(nativeWind[1], 10);
+  if (nativeWind && wx.windSpd === undefined) wx.windSpd = Math.round(parseInt(nativeWind[2], 10) * 1.60934);
   const gust = payload.match(/g(\d{3})/);
   if (gust && gust[1] !== '...') wx.windGust = Math.round(parseInt(gust[1], 10) * 1.60934);
   const rain1h = payload.match(/r(\d{3})/);
@@ -498,12 +562,13 @@ function renderAnalytics(data) {
   const heatmap = Array.isArray(data.heatmap) ? data.heatmap : [];
   const maxHeat = Math.max(1, ...heatmap.flat().map(Number));
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const heatHtml = heatmap.length ? heatmap.map((row, idx) => `
-    <div class="heatmap-row"><span>${days[idx] || `D${idx + 1}`}</span>${row.slice(0, 24).map((v, hour) => {
+  const heatHtml = heatmap.length ? heatmap.map((row, idx) => {
+    const day = days[idx] || `D${idx + 1}`;
+    return `<div class="heatmap-row"><span>${day}</span>${row.slice(0, 24).map((v, hour) => {
       const alpha = Number(v) ? (0.2 + Number(v) / maxHeat * 0.8).toFixed(2) : '0.08';
-      return `<span class="heatmap-cell" title="${days[idx] || ''} ${hour}:00 - ${v} packets" style="background:rgba(39,217,154,${alpha})"></span>`;
-    }).join('')}</div>
-  `).join('') : '<p>No heatmap data returned.</p>';
+      return `<span class="heatmap-cell" title="${day} ${hour}:00 - ${v} packets" style="background:rgba(39,217,154,${alpha})"></span>`;
+    }).join('')}</div>`;
+  }).join('') : '<p>No heatmap data returned.</p>';
   const gradeColor = grade => ({ A: '#22c55e', B: '#84cc16', C: '#eab308', D: '#f97316', E: '#ef4444', F: '#991b1b' }[grade] || '#64748b');
   const reliability = (data.reliability || []).slice(0, 10).map(row => `
     <div class="rank-row"><span class="grade" style="background:${gradeColor(row.grade)}">${esc(row.grade || '-')}</span><div><strong>${esc(row.callsign)}</strong><p>${row.packets || 0} packets, score ${row.score ?? '-'}</p></div><span>${row.avg_gap_s ? Math.round(row.avg_gap_s / 60) + 'm gap' : ''}</span></div>
@@ -554,6 +619,7 @@ function fitMapToStations() {
   state.map.lat = (minLat + maxLat) / 2;
   state.map.lon = (minLon + maxLon) / 2;
   const map = $('map');
+  if (!map.clientWidth || !map.clientHeight) return;
   const latSpan = Math.max(0.01, maxLat - minLat);
   const lonSpan = Math.max(0.01, maxLon - minLon);
   let zoom = 3;
@@ -613,12 +679,32 @@ function transmit(builder) {
   if (!confirm(`Transmit this APRS packet?\n\n${packet}`)) return;
   state.ws.send(JSON.stringify({ type: 'tx', packet }));
   addPacket(packet, 'tx');
+  return packet;
+}
+
+function transmitMessage() {
+  const packet = transmit(messagePacket);
+  if (!packet) return;
+  appendMessage({
+    from: source(),
+    to: call($('message-to').value),
+    text: clean($('message-text').value).slice(0, 67),
+    ts: Math.round(Date.now() / 1000),
+    direction: 'out',
+    raw: packet
+  });
+  $('message-text').value = '';
+  const nextId = Number($('message-id').value);
+  if (Number.isFinite(nextId)) $('message-id').value = String((nextId % 99) + 1).padStart(2, '0');
+  updatePreviews();
 }
 
 async function saveSettings() {
   setSaveState('warn', 'Saving settings...');
   const memberUser = clean($('set-member-user').value);
   const memberPass = $('set-member-pass').value;
+  const oldCall = call(state.settings.callsign);
+  const oldPass = clean(state.settings.passcode);
   const memberChanged = memberUser !== clean(state.settings.memberUser) || memberPass !== (state.settings.memberPass || '');
   const patch = {
     memberUser: clean($('set-member-user').value),
@@ -636,7 +722,8 @@ async function saveSettings() {
     state.settings = await window.aprsnet.saveSettings(patch);
     let verified = false;
     if (memberChanged && memberUser && memberPass) verified = await verifyMemberLogin({ silent: false });
-    authWebSocket();
+    const txChanged = oldCall !== call(state.settings.callsign) || oldPass !== clean(state.settings.passcode);
+    if (txChanged) connectWebSocket(); else authWebSocket();
     updatePreviews();
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setSaveState('ok', verified ? `Saved and member login verified at ${timestamp}` : `Settings saved at ${timestamp}`);
@@ -717,12 +804,17 @@ async function init() {
   $('fit-map').addEventListener('click', fitMapToStations);
   $('map-zoom-in').addEventListener('click', () => { state.map.zoom = Math.min(18, state.map.zoom + 1); drawMap(); });
   $('map-zoom-out').addEventListener('click', () => { state.map.zoom = Math.max(2, state.map.zoom - 1); drawMap(); });
+  $('watchlist').addEventListener('change', async () => {
+    state.settings = await window.aprsnet.saveSettings({ watchlist: $('watchlist').value });
+    drawMap();
+  });
   $('map').addEventListener('wheel', event => {
     event.preventDefault();
     state.map.zoom = Math.max(2, Math.min(18, state.map.zoom + (event.deltaY < 0 ? 1 : -1)));
     drawMap();
   }, { passive: false });
   $('map').addEventListener('mousedown', event => {
+    if (event.target.closest('button, input, textarea')) return;
     const center = project(state.map.lat, state.map.lon, state.map.zoom);
     state.map.dragging = true;
     state.map.dragStart = { x: event.clientX, y: event.clientY };
@@ -740,7 +832,8 @@ async function init() {
     state.map.dragging = false;
     $('map').classList.remove('dragging');
   });
-  $('send-message').addEventListener('click', () => transmit(messagePacket));
+  window.addEventListener('resize', drawMap);
+  $('send-message').addEventListener('click', transmitMessage);
   $('send-beacon').addEventListener('click', () => transmit(beaconPacket));
   $('send-object').addEventListener('click', () => transmit(objectPacket));
   $('send-raw').addEventListener('click', () => transmit(rawPacket));
@@ -754,9 +847,9 @@ async function init() {
     updatePreviews();
   });
 
+  connectWebSocket();
   await loginMember();
   await refreshAll();
-  connectWebSocket();
   setInterval(loadStatus, 15000);
   setInterval(loadStations, 60000);
   setInterval(loadMessages, 45000);
