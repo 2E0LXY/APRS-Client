@@ -15,6 +15,11 @@ const state = {
 const MAX_VISIBLE_MARKERS = 900;
 const CLUSTER_ZOOM_LIMIT = 10;
 const CLUSTER_CELL_SIZE = 58;
+const APRS_SYMBOL_CELL = 24;
+const APRS_SYMBOL_SPRITES = {
+  primary: '../assets/aprs-symbols/aprs-symbols-24-0@2x.png',
+  alternate: '../assets/aprs-symbols/aprs-symbols-24-1@2x.png'
+};
 
 const $ = (id) => document.getElementById(id);
 const clean = (value) => String(value || '').trim();
@@ -67,7 +72,10 @@ function setPill(id, status, text) {
 
 async function api(path, options = {}) {
   const response = await window.aprsnet.api({ path, method: options.method || 'GET', body: options.body, headers: options.headers });
-  setPill('api-state', response.ok ? 'ok' : 'bad', response.ok ? 'API online' : 'API issue');
+  if (options.status !== false) {
+    const reachable = response.status && response.status < 500;
+    setPill('api-state', reachable ? 'ok' : 'bad', reachable ? 'API online' : 'API issue');
+  }
   return response;
 }
 
@@ -165,7 +173,7 @@ async function loadStations() {
 async function loadMessages() {
   const response = await api(state.settings.memberToken ? '/api/member/messages' : '/api/messages');
   if (!response.ok) return;
-  const rows = Array.isArray(response.data) ? response.data : (response.data?.messages || []);
+  const rows = messageHistoryRows(response.data);
   state.messages = mergeMessages([...state.messages, ...rows]);
   renderMessages();
 }
@@ -256,14 +264,29 @@ function setSaveState(kind, text) {
 async function verifyMemberLogin(options = {}) {
   const memberUser = clean($('set-member-user')?.value || state.settings.memberUser);
   const memberPass = $('set-member-pass')?.value || state.settings.memberPass;
+  if (state.settings.memberToken) {
+    const profile = await api('/api/member/profile', { status: false });
+    if (profile.ok) {
+      const autofill = memberLoginAutofillPatch(profile.data);
+      state.settings = await window.aprsnet.saveSettings(Object.assign({ memberUser: memberUser || profile.data?.callsign || state.settings.memberUser }, autofill));
+      hydrateSettings();
+      updatePreviews();
+      if (!options.silent) setMemberLoginState('ok', 'Member session is valid');
+      await loadMessages();
+      setPill('api-state', 'ok', 'API online');
+      return true;
+    }
+    state.settings = await window.aprsnet.saveSettings({ memberToken: '' });
+  }
   if (!memberUser || !memberPass) {
-    if (!options.silent) setMemberLoginState('warn', 'Enter member user and password first');
+    if (!options.silent) setMemberLoginState('warn', 'Enter member user and password, or save a valid member session first');
     return false;
   }
   if (!options.silent) setMemberLoginState('warn', 'Checking member login...');
   const response = await api('/api/member/login', {
     method: 'POST',
-    body: { callsign: memberUser, username: memberUser, password: memberPass }
+    body: { callsign: baseCall(memberUser), password: memberPass },
+    status: false
   });
   const token = memberLoginToken(response.data || {});
   if (response.ok && token) {
@@ -280,7 +303,8 @@ async function verifyMemberLogin(options = {}) {
     await loadMessages();
     return true;
   }
-  if (!options.silent) setMemberLoginState('bad', response.error || 'Member login failed');
+  if (!options.silent) setMemberLoginState('bad', response.data?.error || response.error || 'Member login failed');
+  setPill('api-state', response.status ? 'ok' : 'bad', response.status ? 'API online' : 'API issue');
   return false;
 }
 
@@ -331,8 +355,8 @@ function connectWebSocket() {
       }
     }
     if (message.type === 'msg_history' && message.data) {
-      state.messages.unshift(...(Array.isArray(message.data) ? message.data : [message.data]));
-      state.messages.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+      const rows = Array.isArray(message.data) ? message.data : [message.data];
+      state.messages = mergeMessages([...state.messages, ...rows]);
       renderMessages();
     }
     if (message.type === 'alert') window.aprsnet.notify('APRSNET Alert', message.message || message.packet || 'New alert');
@@ -421,7 +445,15 @@ function aprsSymbolView(station) {
   const table = symbol.table === '\\' || symbol.overlay ? '\\' : '/';
   const key = `${table}${symbol.code}`;
   const base = APRS_SYMBOLS[key] || APRS_SYMBOLS[`/${symbol.code}`] || ['APRS station', symbol.code || '•'];
-  return { key, label: base[0], glyph: base[1], overlay: symbol.overlay };
+  const index = symbol.code ? symbol.code.charCodeAt(0) - 33 : -1;
+  const sprite = index >= 0 && index < 96
+    ? {
+      url: table === '\\' ? APRS_SYMBOL_SPRITES.alternate : APRS_SYMBOL_SPRITES.primary,
+      x: (index % 16) * APRS_SYMBOL_CELL,
+      y: Math.floor(index / 16) * APRS_SYMBOL_CELL
+    }
+    : null;
+  return { key, label: base[0], glyph: base[1], overlay: symbol.overlay, sprite };
 }
 
 function renderPackets() {
@@ -449,22 +481,65 @@ function parseAprsMessagePacket(packet, direction = '') {
   };
 }
 
+function myMessageCalls() {
+  return [state.settings.callsign, state.settings.memberUser]
+    .map(baseCall)
+    .filter(Boolean);
+}
+
+function messageInvolvesUser(message) {
+  const mine = myMessageCalls();
+  if (!mine.length) return false;
+  return mine.includes(baseCall(message.from)) || mine.includes(baseCall(message.to));
+}
+
+function messageDirection(message) {
+  const mine = myMessageCalls();
+  if (!mine.length) return message.direction || '';
+  if (mine.includes(baseCall(message.from))) return 'out';
+  if (mine.includes(baseCall(message.to))) return 'in';
+  return message.direction || '';
+}
+
 function normaliseMessage(item) {
-  return {
-    id: item.id || `${item.from || ''}-${item.to || ''}-${item.ts || Date.now()}-${item.text || item.packet || ''}`,
-    from: call(item.from || item.src || ''),
-    to: call(item.to || item.dst || ''),
-    text: clean(item.text || item.message || item.packet || item.raw || ''),
-    ts: Number(item.ts || item.timestamp || Math.round(Date.now() / 1000)),
-    direction: item.direction || '',
+  const packet = item.packet || item.raw || '';
+  const parsed = (!item.from && !item.to && packet) ? parseAprsMessagePacket(packet) : null;
+  const from = call(item.from || item.src || item.source || item.sender || parsed?.from || '');
+  const to = call(item.to || item.dst || item.destination || item.recipient || parsed?.to || '');
+  const text = clean(item.text || item.message || parsed?.text || '');
+  const ts = Number(item.ts || item.timestamp || item.created_at || item.createdAt || parsed?.ts || Math.round(Date.now() / 1000));
+  const normalised = {
+    id: item.id || `${from}-${to}-${ts}-${text || packet}`,
+    from,
+    to,
+    text,
+    ts,
+    direction: item.direction || parsed?.direction || '',
     read: item.read !== false,
     raw: item.raw || item.packet || ''
   };
+  normalised.direction = messageDirection(normalised);
+  return normalised;
+}
+
+function normaliseMessageList(rows) {
+  return rows
+    .map(normaliseMessage)
+    .filter(message => message.from && message.to && message.text && messageInvolvesUser(message));
+}
+
+function messageHistoryRows(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.messages)) return data.messages;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.history)) return data.history;
+  if (Array.isArray(data?.rows)) return data.rows;
+  return [];
 }
 
 function mergeMessages(rows) {
   const merged = [];
-  for (const row of rows.map(normaliseMessage).sort((a, b) => a.ts - b.ts)) {
+  for (const row of normaliseMessageList(rows).sort((a, b) => a.ts - b.ts)) {
     const duplicate = merged.some(existing =>
       existing.from === row.from &&
       existing.to === row.to &&
@@ -482,18 +557,19 @@ function appendMessage(message) {
 }
 
 function conversationPeer(message) {
-  const mine = baseCall(state.settings.callsign);
+  const mine = myMessageCalls();
   if (message.direction === 'out') return message.to || 'UNKNOWN';
   if (message.direction === 'in') return message.from || 'UNKNOWN';
-  if (mine && baseCall(message.from) === mine) return message.to || 'UNKNOWN';
-  if (mine && baseCall(message.to) === mine) return message.from || 'UNKNOWN';
-  return message.from || message.to || 'UNKNOWN';
+  if (mine.includes(baseCall(message.from))) return message.to || 'UNKNOWN';
+  if (mine.includes(baseCall(message.to))) return message.from || 'UNKNOWN';
+  return '';
 }
 
 function groupedConversations() {
   const groups = new Map();
-  state.messages.map(normaliseMessage).forEach(message => {
+  normaliseMessageList(state.messages).forEach(message => {
     const peer = conversationPeer(message);
+    if (!peer) return;
     if (!groups.has(peer)) groups.set(peer, []);
     groups.get(peer).push(message);
   });
@@ -518,7 +594,7 @@ function renderMessages() {
   $('chat-subtitle').textContent = active ? `${active.messages.length} synced message${active.messages.length === 1 ? '' : 's'}` : 'Synced from APRSNET member message history where available.';
   $('message-feed').innerHTML = active
     ? active.messages.map(message => {
-      const outgoing = message.direction === 'out' || (state.settings.callsign && baseCall(message.from) === baseCall(state.settings.callsign));
+      const outgoing = messageDirection(message) === 'out';
       return `<div class="bubble ${outgoing ? 'out' : 'in'}"><div>${esc(message.text)}</div><div class="bubble-meta">${esc(message.from || '?')} to ${esc(message.to || '?')} - ${formatClock(message.ts)}</div></div>`;
     }).join('')
     : '<div class="bubble system">Choose a conversation on the left.</div>';
@@ -767,6 +843,9 @@ function updateClusterMarker(marker, cluster) {
   marker.title = `${cluster.count} APRS stations near this area. Zoom in for individual stations.`;
   marker.style.transform = `translate(${Math.round(cluster.x)}px, ${Math.round(cluster.y)}px) translate(-50%, -50%)`;
   const parts = markerParts(marker);
+  parts.symbol.style.backgroundImage = '';
+  parts.symbol.style.backgroundPosition = '';
+  parts.symbol.style.backgroundSize = '';
   parts.symbol.textContent = cluster.count > 99 ? '99+' : String(cluster.count);
   parts.overlay.textContent = '';
   parts.label.textContent = `${cluster.count} stations`;
@@ -781,7 +860,17 @@ function updateStationMarker(marker, station, x, y, watch) {
   marker.title = `${station.call} - ${view.label} (${view.key})`;
   marker.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
   const parts = markerParts(marker);
-  parts.symbol.textContent = view.glyph;
+  if (view.sprite) {
+    parts.symbol.style.backgroundImage = `url("${view.sprite.url}")`;
+    parts.symbol.style.backgroundPosition = `-${view.sprite.x}px -${view.sprite.y}px`;
+    parts.symbol.style.backgroundSize = `${APRS_SYMBOL_CELL * 16}px ${APRS_SYMBOL_CELL * 6}px`;
+    parts.symbol.textContent = '';
+  } else {
+    parts.symbol.style.backgroundImage = '';
+    parts.symbol.style.backgroundPosition = '';
+    parts.symbol.style.backgroundSize = '';
+    parts.symbol.textContent = view.glyph;
+  }
   parts.overlay.textContent = view.overlay;
   parts.label.textContent = station.call;
 }
