@@ -49,10 +49,27 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
       - name: Build Windows package
         run: npm run build:win -- --publish never
 
-      - name: Smoke test Windows zip
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $env:APRSNET_VERSION = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+          Push-Location scripts
+          try {
+            & $iscc installer.iss
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Smoke test Windows packages
         shell: pwsh
         run: |
           $zip = Get-ChildItem dist -Filter "*.zip" | Select-Object -First 1
@@ -69,6 +86,30 @@ jobs:
           if ($parseErrors) {
             $parseErrors | Format-List *
             throw "Windows installer script failed PowerShell syntax validation."
+          }
+          $installer = Get-ChildItem dist -Filter "APRSNET.Desktop.Setup.*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "No Inno Setup installer was produced." }
+          $installDir = Join-Path $env:TEMP "aprsnet-desktop-inno-smoke"
+          $installLog = Join-Path $env:TEMP "aprsnet-desktop-inno-smoke.log"
+          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installDir`"", "/LOG=`"$installLog`"") -PassThru
+          if (-not $process.WaitForExit(120000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            if (Test-Path $installLog) { Get-Content $installLog -Tail 120 }
+            throw "Inno installer timed out after 120 seconds."
+          }
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $installLog) { Get-Content $installLog -Tail 120 }
+            throw "Inno installer failed with exit code $($process.ExitCode)."
+          }
+          if (-not (Test-Path (Join-Path $installDir "APRSNET Desktop.exe"))) {
+            if (Test-Path $installLog) { Get-Content $installLog -Tail 120 }
+            throw "Inno installer completed but APRSNET Desktop.exe was not installed."
+          }
+          $uninstaller = Get-ChildItem -Path $installDir -Filter "unins*.exe" | Select-Object -First 1
+          if ($uninstaller) {
+            $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -PassThru
+            $null = $uninstall.WaitForExit(60000)
           }
 
       - name: Upload Windows artifacts
@@ -100,9 +141,15 @@ jobs:
           name: aprsnet-desktop-windows
           path: dist/
 
+      - name: Stage release files
+        run: |
+          mkdir -p release-assets
+          find dist -type f \( -name "*.deb" -o -name "*.zip" -o -name "*.exe" -o -name "install-windows.ps1" \) -exec cp {} release-assets/ \;
+          ls -la release-assets
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: release-assets/*
           generate_release_notes: true
 

@@ -18,7 +18,7 @@ This repository is now the native APRSNET desktop application. It is not a brows
 - APRSNET member login token storage for member-backed API calls
 - Member login verification can autofill callsign and APRS-IS passcode when APRSNET returns them
 - Desktop notifications, tray menu, single-instance behaviour and launch-on-startup support
-- Windows zip/portable packaging with a PowerShell installer, and Debian `.deb` packaging through Electron Builder
+- Windows Inno Setup installer, zip/portable fallback packages, and Debian `.deb` packaging
 
 ## Intended End State
 
@@ -75,7 +75,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The tag build creates a GitHub Release and uploads the Windows zip package, portable Windows executable, PowerShell installer and Debian package.
+The tag build creates a GitHub Release and uploads the Windows setup installer, Windows zip package, portable Windows executable, fallback PowerShell installer and Debian package.
 
 Windows install from the latest release:
 
