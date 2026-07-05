@@ -69,23 +69,38 @@
             <button id="fit-map">Fit</button>
           </div>
         </div>
-        <canvas id="map" width="1200" height="720"></canvas>
+        <div id="map" class="osm-map">
+          <div id="map-tiles" class="map-tiles"></div>
+          <div id="map-markers" class="map-markers"></div>
+          <div class="map-controls">
+            <button id="map-zoom-in" type="button">+</button>
+            <button id="map-zoom-out" type="button">-</button>
+          </div>
+          <div id="map-attribution">OpenStreetMap</div>
+        </div>
       </section>
     </section>
 
     <section id="view-messages" class="view">
-      <div class="grid two">
-        <section class="panel">
-          <div class="panel-head"><h2>Messages</h2><button id="refresh-messages">Refresh</button></div>
-          <div id="message-feed" class="feed"></div>
+      <div class="messages-layout">
+        <section class="panel conversation-panel">
+          <div class="panel-head"><h2>Conversations</h2><button id="refresh-messages">Refresh</button></div>
+          <div id="conversation-list" class="conversation-list"></div>
         </section>
-        <section class="panel form">
-          <h2>Send APRS Message</h2>
-          <label>To callsign<input id="message-to" maxlength="9" autocomplete="off"></label>
-          <label>Text<textarea id="message-text" maxlength="67"></textarea></label>
-          <label>Message ID<input id="message-id" value="01" maxlength="5"></label>
-          <pre id="message-preview" class="preview"></pre>
-          <button id="send-message" class="primary">Transmit Message</button>
+        <section class="panel chat-panel">
+          <div class="panel-head">
+            <div><h2 id="chat-title">Select a conversation</h2><p id="chat-subtitle">Synced from APRSNET member message history where available.</p></div>
+          </div>
+          <div id="message-feed" class="chat-feed"></div>
+          <div class="composer">
+            <input id="message-to" maxlength="9" autocomplete="off" placeholder="To callsign">
+            <textarea id="message-text" maxlength="67" placeholder="Message text"></textarea>
+            <div class="tools">
+              <input id="message-id" value="01" maxlength="5" title="Message ID">
+              <button id="send-message" class="primary">Send</button>
+            </div>
+            <pre id="message-preview" class="preview"></pre>
+          </div>
         </section>
       </div>
     </section>
@@ -121,7 +136,11 @@
 
     <section id="view-weather" class="view">
       <section class="panel">
-        <div class="panel-head"><h2>Weather</h2><button id="refresh-weather">Refresh</button></div>
+        <div class="panel-head">
+          <div><h2>Nearest APRS Weather Stations</h2><p id="weather-origin">Using saved/user location when available.</p></div>
+          <button id="refresh-weather">Refresh</button>
+        </div>
+        <div id="weather-summary" class="metrics compact"></div>
         <div id="weather-grid" class="cards"></div>
       </section>
     </section>
@@ -129,7 +148,7 @@
     <section id="view-analytics" class="view">
       <section class="panel">
         <div class="panel-head"><h2>Analytics</h2><button id="refresh-analytics">Refresh</button></div>
-        <div id="analytics-grid" class="cards"></div>
+        <div id="analytics-grid" class="analytics-layout"></div>
       </section>
     </section>
 

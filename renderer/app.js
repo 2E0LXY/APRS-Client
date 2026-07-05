@@ -6,7 +6,10 @@ const state = {
   stations: new Map(),
   packets: [],
   packetTimes: [],
-  messages: []
+  messages: [],
+  selectedConversation: '',
+  userLocation: null,
+  map: { lat: 54.5, lon: -2.5, zoom: 6, dragging: false, dragStart: null, dragCenter: null }
 };
 
 const $ = (id) => document.getElementById(id);
@@ -22,6 +25,28 @@ function age(ts) {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.round(minutes / 60)}h`;
+}
+
+function formatClock(ts) {
+  if (!ts) return '';
+  return new Date(Number(ts) * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function distanceKm(aLat, aLon, bLat, bLon) {
+  const toRad = n => n * Math.PI / 180;
+  const r = 6371;
+  const dLat = toRad(bLat - aLat);
+  const dLon = toRad(bLon - aLon);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function userLocation() {
+  const lat = Number(state.settings.manualLat);
+  const lon = Number(state.settings.manualLon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon, source: 'saved manual location' };
+  if (state.userLocation) return state.userLocation;
+  return null;
 }
 
 function setPill(id, status, text) {
@@ -116,44 +141,37 @@ async function loadStations() {
       lat: Number(coords[1]),
       ts: props.timestamp || props.ts,
       path: props.path || '',
-      type: props.type || 'station'
+      type: props.type || 'station',
+      raw: props.raw || '',
+      symbol: props.symbol || '',
+      comment: props.comment || ''
     });
   }
   renderStations();
+  renderWeatherStations();
   drawMap();
 }
 
 async function loadMessages() {
-  const response = await api('/api/messages');
+  const response = await api(state.settings.memberToken ? '/api/member/messages' : '/api/messages');
   if (!response.ok) return;
   const rows = Array.isArray(response.data) ? response.data : (response.data?.messages || []);
-  state.messages = rows.slice(-100).reverse();
+  state.messages = rows.slice(-250).sort((a, b) => (a.ts || 0) - (b.ts || 0));
   renderMessages();
 }
 
 async function loadWeather() {
-  const response = await api('/api/wx/warnings');
-  const grid = $('weather-grid');
-  if (!response.ok) {
-    grid.innerHTML = '<article><strong>Weather unavailable</strong><p>APRSNET did not return warning data.</p></article>';
-    return;
-  }
-  const items = Array.isArray(response.data) ? response.data : (response.data?.warnings || []);
-  grid.innerHTML = items.length
-    ? items.map(item => `<article><strong>${esc(item.headline || item.event || 'Warning')}</strong><p>${esc(item.description || item.area || JSON.stringify(item).slice(0, 220))}</p></article>`).join('')
-    : '<article><strong>No warnings</strong><p>No active APRSNET weather warnings returned.</p></article>';
+  await ensureUserLocation();
+  renderWeatherStations();
 }
 
 async function loadAnalytics() {
   const response = await api('/api/analytics');
-  const grid = $('analytics-grid');
   if (!response.ok) {
-    grid.innerHTML = '<article><strong>Analytics unavailable</strong><p>APRSNET did not return analytics data.</p></article>';
+    $('analytics-grid').innerHTML = '<section class="analytics-section">Analytics unavailable from APRSNET.</section>';
     return;
   }
-  grid.innerHTML = Object.entries(response.data || {}).slice(0, 16)
-    .map(([key, value]) => `<article><strong>${esc(key)}</strong><p>${esc(typeof value === 'object' ? JSON.stringify(value).slice(0, 240) : value)}</p></article>`)
-    .join('') || '<article><strong>No analytics</strong><p>No analytics fields were returned.</p></article>';
+  renderAnalytics(response.data || {});
 }
 
 async function loginMember() {
@@ -249,6 +267,7 @@ async function verifyMemberLogin(options = {}) {
     if (!options.silent) {
       setMemberLoginState('ok', filled.length ? `Member login OK; filled ${filled.join(' and ')}` : 'Member login OK; no callsign/passcode returned');
     }
+    await loadMessages();
     return true;
   }
   if (!options.silent) setMemberLoginState('bad', response.error || 'Member login failed');
@@ -282,13 +301,15 @@ function connectWebSocket() {
       const item = message.data;
       const stationCall = item.call || item.callsign;
       if (stationCall && Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon))) {
-        state.stations.set(stationCall, { call: stationCall, lat: Number(item.lat), lon: Number(item.lon), ts: item.ts || Math.round(Date.now() / 1000), path: item.path || '', type: message.type === 'obj' ? 'object' : 'station' });
+        state.stations.set(stationCall, { call: stationCall, lat: Number(item.lat), lon: Number(item.lon), ts: item.ts || Math.round(Date.now() / 1000), path: item.path || '', raw: item.raw || item.packet || '', symbol: item.symbol || '', type: message.type === 'obj' ? 'object' : 'station' });
         renderStations();
+        renderWeatherStations();
         drawMap();
       }
     }
     if (message.type === 'msg_history' && message.data) {
       state.messages.unshift(...(Array.isArray(message.data) ? message.data : [message.data]));
+      state.messages.sort((a, b) => (a.ts || 0) - (b.ts || 0));
       renderMessages();
     }
     if (message.type === 'alert') window.aprsnet.notify('APRSNET Alert', message.message || message.packet || 'New alert');
@@ -313,8 +334,60 @@ function renderPackets() {
   $('packet-feed').innerHTML = state.packets.map(item => `<div class="feed-row"><header><span>${esc(item.type)}</span><span>${new Date(item.ts).toLocaleTimeString()}</span></header><code>${esc(item.packet)}</code></div>`).join('') || '<div class="feed-row">Waiting for APRSNET packets...</div>';
 }
 
+function normaliseMessage(item) {
+  return {
+    id: item.id || `${item.from || ''}-${item.to || ''}-${item.ts || Date.now()}-${item.text || item.packet || ''}`,
+    from: call(item.from || item.src || ''),
+    to: call(item.to || item.dst || ''),
+    text: clean(item.text || item.message || item.packet || item.raw || ''),
+    ts: Number(item.ts || item.timestamp || Math.round(Date.now() / 1000)),
+    direction: item.direction || '',
+    read: item.read !== false,
+    raw: item.raw || item.packet || ''
+  };
+}
+
+function conversationPeer(message) {
+  const mine = baseCall(state.settings.callsign);
+  if (message.direction === 'out') return message.to || 'UNKNOWN';
+  if (message.direction === 'in') return message.from || 'UNKNOWN';
+  if (mine && baseCall(message.from) === mine) return message.to || 'UNKNOWN';
+  if (mine && baseCall(message.to) === mine) return message.from || 'UNKNOWN';
+  return message.from || message.to || 'UNKNOWN';
+}
+
+function groupedConversations() {
+  const groups = new Map();
+  state.messages.map(normaliseMessage).forEach(message => {
+    const peer = conversationPeer(message);
+    if (!groups.has(peer)) groups.set(peer, []);
+    groups.get(peer).push(message);
+  });
+  return [...groups.entries()]
+    .map(([peer, messages]) => ({ peer, messages: messages.sort((a, b) => a.ts - b.ts), last: messages[messages.length - 1] }))
+    .sort((a, b) => (b.last?.ts || 0) - (a.last?.ts || 0));
+}
+
 function renderMessages() {
-  $('message-feed').innerHTML = state.messages.slice(0, 80).map(item => `<div class="feed-row"><header><span><button class="call-button" data-call="${esc(item.from || '')}">${esc(item.from || '?')}</button> to ${esc(item.to || '?')}</span><span>${age(item.ts)}</span></header><code>${esc(item.text || item.packet || '')}</code></div>`).join('') || '<div class="feed-row">No messages returned yet.</div>';
+  const conversations = groupedConversations();
+  if (!state.selectedConversation && conversations.length) state.selectedConversation = conversations[0].peer;
+  $('conversation-list').innerHTML = conversations.map(conv => `
+    <button class="conversation-item ${conv.peer === state.selectedConversation ? 'active' : ''}" data-conversation="${esc(conv.peer)}">
+      <strong>${esc(conv.peer)}</strong>
+      <span>${esc(conv.last?.text || 'No text')}</span>
+      <span>${formatClock(conv.last?.ts)}</span>
+    </button>
+  `).join('') || '<div class="feed-row">No synced messages yet. Log in as a member to sync website history.</div>';
+
+  const active = conversations.find(conv => conv.peer === state.selectedConversation);
+  $('chat-title').textContent = active ? active.peer : 'Select a conversation';
+  $('chat-subtitle').textContent = active ? `${active.messages.length} synced message${active.messages.length === 1 ? '' : 's'}` : 'Synced from APRSNET member message history where available.';
+  $('message-feed').innerHTML = active
+    ? active.messages.map(message => {
+      const outgoing = message.direction === 'out' || (state.settings.callsign && baseCall(message.from) === baseCall(state.settings.callsign));
+      return `<div class="bubble ${outgoing ? 'out' : 'in'}"><div>${esc(message.text)}</div><div class="bubble-meta">${esc(message.from || '?')} to ${esc(message.to || '?')} - ${formatClock(message.ts)}</div></div>`;
+    }).join('')
+    : '<div class="bubble system">Choose a conversation on the left.</div>';
 }
 
 function renderStations() {
@@ -324,33 +397,210 @@ function renderStations() {
   $('station-table').innerHTML = rows.slice(0, 90).map(row => `<tr><td><button class="call-button" data-call="${esc(row.call)}">${esc(row.call)}</button></td><td>${age(row.ts)}</td><td>${row.lat.toFixed(4)}, ${row.lon.toFixed(4)}</td><td><code>${esc(row.path || '-')}</code></td></tr>`).join('');
 }
 
-function drawMap() {
-  const canvas = $('map');
-  if (!canvas || !canvas.clientWidth || !canvas.clientHeight) return;
-  const ctx = canvas.getContext('2d');
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(canvas.clientWidth * scale);
-  canvas.height = Math.floor(canvas.clientHeight * scale);
-  ctx.scale(scale, scale);
-  ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-  ctx.strokeStyle = 'rgba(39,217,154,.14)';
-  for (let x = 50; x < canvas.clientWidth; x += 80) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.clientHeight); ctx.stroke(); }
-  for (let y = 50; y < canvas.clientHeight; y += 80) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.clientWidth, y); ctx.stroke(); }
+function parseWXPacket(raw) {
+  if (!raw) return null;
+  const colon = raw.indexOf(':');
+  if (colon < 0) return null;
+  const payload = raw.slice(colon + 1);
+  if (!/[tcbshgrpLl]\d{2,5}/.test(payload)) return null;
+  const wx = {};
+  const temp = payload.match(/t([-+]?\d{3})/);
+  if (temp && temp[1] !== '...') wx.tempC = Math.round((parseInt(temp[1], 10) - 32) * 5 / 9);
+  const humidity = payload.match(/h(\d{2})/);
+  if (humidity) wx.humidity = parseInt(humidity[1], 10) === 0 ? 100 : parseInt(humidity[1], 10);
+  const pressure = payload.match(/b(\d{5})/);
+  if (pressure) wx.pressure = (parseInt(pressure[1], 10) / 10).toFixed(1);
+  const windDir = payload.match(/c(\d{3})/);
+  if (windDir && windDir[1] !== '...') wx.windDir = parseInt(windDir[1], 10);
+  const windSpd = payload.match(/s(\d{3})/);
+  if (windSpd && windSpd[1] !== '...') wx.windSpd = Math.round(parseInt(windSpd[1], 10) * 1.60934);
+  const gust = payload.match(/g(\d{3})/);
+  if (gust && gust[1] !== '...') wx.windGust = Math.round(parseInt(gust[1], 10) * 1.60934);
+  const rain1h = payload.match(/r(\d{3})/);
+  if (rain1h) wx.rain1h = (parseInt(rain1h[1], 10) * 0.254).toFixed(1);
+  const rain24h = payload.match(/p(\d{3})/);
+  if (rain24h) wx.rain24h = (parseInt(rain24h[1], 10) * 0.254).toFixed(1);
+  const luminosity = payload.match(/[Ll](\d{3,4})/);
+  if (luminosity) wx.luminosity = parseInt(luminosity[1], 10);
+  return Object.keys(wx).length ? wx : null;
+}
+
+function windLabel(deg) {
+  if (!Number.isFinite(Number(deg))) return '';
+  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(Number(deg) / 45) % 8];
+}
+
+async function ensureUserLocation() {
+  if (userLocation()) return userLocation();
+  if (!navigator.geolocation) return null;
+  try {
+    const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 300000 }));
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    await window.aprsnet.reportPosition({ lat, lon, accuracy: pos.coords.accuracy });
+    state.userLocation = { lat, lon, source: 'current device location' };
+    state.settings.manualLat = state.settings.manualLat ?? null;
+    state.settings.manualLon = state.settings.manualLon ?? null;
+    return state.userLocation;
+  } catch (err) {
+    return null;
+  }
+}
+
+function weatherStations() {
+  const origin = userLocation();
+  return [...state.stations.values()]
+    .map(station => ({ station, wx: parseWXPacket(station.raw) }))
+    .filter(row => row.wx && Number.isFinite(row.station.lat) && Number.isFinite(row.station.lon))
+    .map(row => Object.assign(row, {
+      distance: origin ? distanceKm(origin.lat, origin.lon, row.station.lat, row.station.lon) : null
+    }))
+    .sort((a, b) => {
+      if (a.distance !== null && b.distance !== null) return a.distance - b.distance;
+      return (b.station.ts || 0) - (a.station.ts || 0);
+    });
+}
+
+function renderWeatherStations() {
+  const origin = userLocation();
+  const stations = weatherStations();
+  const nearest = stations.slice(0, 6);
+  $('weather-origin').textContent = origin
+    ? `Nearest stations to ${origin.source}: ${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`
+    : 'No user location yet. Add manual lat/lon in Settings or allow location access; showing freshest APRS weather stations.';
+  const temps = stations.map(s => s.wx.tempC).filter(Number.isFinite);
+  const winds = stations.map(s => s.wx.windSpd).filter(Number.isFinite);
+  const hums = stations.map(s => s.wx.humidity).filter(Number.isFinite);
+  const avg = list => list.length ? Math.round(list.reduce((a, b) => a + b, 0) / list.length) : '-';
+  $('weather-summary').innerHTML = `
+    <article><span>Weather Stations</span><strong>${stations.length}</strong><em>heard on APRS</em></article>
+    <article><span>Avg Temp</span><strong>${avg(temps)}${temps.length ? 'C' : ''}</strong><em>nearby sample</em></article>
+    <article><span>Max Wind</span><strong>${winds.length ? Math.max(...winds) + ' km/h' : '-'}</strong><em>${winds.length ? Math.round(Math.max(...winds) * 0.621371) + ' mph' : 'no wind data'}</em></article>
+    <article><span>Avg Humidity</span><strong>${avg(hums)}${hums.length ? '%' : ''}</strong><em>reported humidity</em></article>
+  `;
+  $('weather-grid').innerHTML = nearest.length ? nearest.map(({ station, wx, distance }) => `
+    <article class="wx-card">
+      <strong><button class="call-button" data-call="${esc(station.call)}">${esc(station.call)}</button></strong>
+      <p>${distance !== null ? `${distance.toFixed(1)} km away - ` : ''}heard ${age(station.ts)} ago</p>
+      ${wx.tempC !== undefined ? `<div class="wx-temp">${wx.tempC}C <span>(${Math.round(wx.tempC * 9 / 5 + 32)}F)</span></div>` : ''}
+      ${wx.humidity !== undefined ? `<div class="wx-row"><span>Humidity</span><b>${wx.humidity}%</b></div>` : ''}
+      ${wx.pressure !== undefined ? `<div class="wx-row"><span>Pressure</span><b>${wx.pressure} hPa</b></div>` : ''}
+      ${wx.windSpd !== undefined ? `<div class="wx-row"><span>Wind ${windLabel(wx.windDir)} ${wx.windDir ?? ''}</span><b>${Math.round(wx.windSpd * 0.621371)} mph (${wx.windSpd} km/h)</b></div>` : ''}
+      ${wx.windGust !== undefined ? `<div class="wx-row"><span>Gust</span><b>${Math.round(wx.windGust * 0.621371)} mph (${wx.windGust} km/h)</b></div>` : ''}
+      ${wx.rain1h !== undefined ? `<div class="wx-row"><span>Rain 1h</span><b>${wx.rain1h} mm</b></div>` : ''}
+      ${wx.rain24h !== undefined ? `<div class="wx-row"><span>Rain 24h</span><b>${wx.rain24h} mm</b></div>` : ''}
+    </article>
+  `).join('') : '<article><strong>No APRS weather stations found</strong><p>Waiting for CWOP/WX packets in APRSNET station data.</p></article>';
+}
+
+function renderAnalytics(data) {
+  const generated = data.generated_at ? new Date(Number(data.generated_at) * 1000).toLocaleString() : '-';
+  const heatmap = Array.isArray(data.heatmap) ? data.heatmap : [];
+  const maxHeat = Math.max(1, ...heatmap.flat().map(Number));
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const heatHtml = heatmap.length ? heatmap.map((row, idx) => `
+    <div class="heatmap-row"><span>${days[idx] || `D${idx + 1}`}</span>${row.slice(0, 24).map((v, hour) => {
+      const alpha = Number(v) ? (0.2 + Number(v) / maxHeat * 0.8).toFixed(2) : '0.08';
+      return `<span class="heatmap-cell" title="${days[idx] || ''} ${hour}:00 - ${v} packets" style="background:rgba(39,217,154,${alpha})"></span>`;
+    }).join('')}</div>
+  `).join('') : '<p>No heatmap data returned.</p>';
+  const gradeColor = grade => ({ A: '#22c55e', B: '#84cc16', C: '#eab308', D: '#f97316', E: '#ef4444', F: '#991b1b' }[grade] || '#64748b');
+  const reliability = (data.reliability || []).slice(0, 10).map(row => `
+    <div class="rank-row"><span class="grade" style="background:${gradeColor(row.grade)}">${esc(row.grade || '-')}</span><div><strong>${esc(row.callsign)}</strong><p>${row.packets || 0} packets, score ${row.score ?? '-'}</p></div><span>${row.avg_gap_s ? Math.round(row.avg_gap_s / 60) + 'm gap' : ''}</span></div>
+  `).join('') || '<p>No reliability data returned.</p>';
+  const paths = (data.longest_paths || []).slice(0, 8).map((row, index) => `
+    <div class="rank-row"><span>#${index + 1}</span><div><strong>${esc(row.callsign)}</strong><p>${esc(row.path || '')}</p></div><span>${row.hops || 0} hops</span></div>
+  `).join('') || '<p>No long path data returned.</p>';
+  $('analytics-grid').innerHTML = `
+    <div class="analytics-summary">
+      <article><span>Total Packets</span><strong>${Number(data.total_packets || 0).toLocaleString()}</strong><em>in analysis window</em></article>
+      <article><span>Total Stations</span><strong>${Number(data.total_stations || 0).toLocaleString()}</strong><em>unique stations</em></article>
+      <article><span>Busiest Hour</span><strong>${data.best_hour ?? '-'}</strong><em>${Number(data.best_hour_count || 0).toLocaleString()} packets</em></article>
+      <article><span>Generated</span><strong>${esc(generated)}</strong><em>server analytics time</em></article>
+    </div>
+    <section class="analytics-section"><h2>Activity Heatmap</h2><div class="heatmap">${heatHtml}</div></section>
+    <section class="analytics-section"><h2>Most Reliable Stations</h2><div class="rank-list">${reliability}</div></section>
+    <section class="analytics-section"><h2>Longest Heard Paths</h2><div class="rank-list">${paths}</div></section>
+  `;
+}
+
+function lonToTileX(lon, zoom) { return ((lon + 180) / 360) * 2 ** zoom; }
+function latToTileY(lat, zoom) {
+  const rad = lat * Math.PI / 180;
+  return (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * 2 ** zoom;
+}
+function tileXToLon(x, zoom) { return x / 2 ** zoom * 360 - 180; }
+function tileYToLat(y, zoom) {
+  const n = Math.PI - 2 * Math.PI * y / 2 ** zoom;
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+function project(lat, lon, zoom) {
+  return { x: lonToTileX(lon, zoom) * 256, y: latToTileY(lat, zoom) * 256 };
+}
+
+function setMapCenterFromPixels(pixelX, pixelY, zoom) {
+  state.map.lon = tileXToLon(pixelX / 256, zoom);
+  state.map.lat = tileYToLat(pixelY / 256, zoom);
+}
+
+function fitMapToStations() {
   const stations = [...state.stations.values()].filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
   if (!stations.length) return;
   const minLat = Math.min(...stations.map(s => s.lat));
   const maxLat = Math.max(...stations.map(s => s.lat));
   const minLon = Math.min(...stations.map(s => s.lon));
   const maxLon = Math.max(...stations.map(s => s.lon));
-  const pad = 36;
+  state.map.lat = (minLat + maxLat) / 2;
+  state.map.lon = (minLon + maxLon) / 2;
+  const map = $('map');
+  const latSpan = Math.max(0.01, maxLat - minLat);
+  const lonSpan = Math.max(0.01, maxLon - minLon);
+  let zoom = 3;
+  for (let z = 3; z <= 15; z++) {
+    const px1 = project(minLat, minLon, z);
+    const px2 = project(maxLat, maxLon, z);
+    if (Math.abs(px2.x - px1.x) < map.clientWidth * 0.8 && Math.abs(px2.y - px1.y) < map.clientHeight * 0.8) zoom = z;
+  }
+  if (latSpan < 0.1 && lonSpan < 0.1) zoom = Math.max(zoom, 10);
+  state.map.zoom = zoom;
+  drawMap();
+}
+
+function drawMap() {
+  const map = $('map');
+  const tiles = $('map-tiles');
+  const markers = $('map-markers');
+  if (!map || !tiles || !markers || !map.clientWidth || !map.clientHeight) return;
+  const zoom = Math.max(2, Math.min(18, state.map.zoom));
+  const center = project(state.map.lat, state.map.lon, zoom);
+  const left = center.x - map.clientWidth / 2;
+  const top = center.y - map.clientHeight / 2;
+  const minX = Math.floor(left / 256);
+  const maxX = Math.floor((left + map.clientWidth) / 256);
+  const minY = Math.floor(top / 256);
+  const maxY = Math.floor((top + map.clientHeight) / 256);
+  const maxTile = 2 ** zoom;
+  let tileHtml = '';
+  for (let x = minX; x <= maxX; x++) {
+    for (let y = minY; y <= maxY; y++) {
+      if (y < 0 || y >= maxTile) continue;
+      const wrappedX = ((x % maxTile) + maxTile) % maxTile;
+      tileHtml += `<img alt="" src="https://tile.openstreetmap.org/${zoom}/${wrappedX}/${y}.png" style="left:${Math.round(x * 256 - left)}px;top:${Math.round(y * 256 - top)}px">`;
+    }
+  }
+  tiles.innerHTML = tileHtml;
+
   const watch = new Set(clean($('watchlist').value).toUpperCase().split(/[,\s]+/).filter(Boolean));
-  stations.forEach(station => {
-    const x = pad + ((station.lon - minLon) / Math.max(0.001, maxLon - minLon)) * (canvas.clientWidth - pad * 2);
-    const y = canvas.clientHeight - pad - ((station.lat - minLat) / Math.max(0.001, maxLat - minLat)) * (canvas.clientHeight - pad * 2);
-    ctx.fillStyle = watch.has(station.call.toUpperCase()) ? '#f1bd55' : (station.type === 'object' ? '#65b7ff' : '#27d99a');
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#ecfff6'; ctx.font = '12px Segoe UI'; ctx.fillText(station.call, x + 8, y + 4);
-  });
+  markers.innerHTML = [...state.stations.values()].filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon)).map(station => {
+    const point = project(station.lat, station.lon, zoom);
+    const x = Math.round(point.x - left);
+    const y = Math.round(point.y - top);
+    if (x < -60 || y < -30 || x > map.clientWidth + 80 || y > map.clientHeight + 30) return '';
+    const isWx = !!parseWXPacket(station.raw);
+    const classes = ['map-marker', station.type === 'object' ? 'object' : '', watch.has(station.call.toUpperCase()) ? 'watch' : '', isWx ? 'wx' : ''].filter(Boolean).join(' ');
+    return `<button class="${classes}" data-call="${esc(station.call)}" title="${esc(station.call)}" style="left:${x}px;top:${y}px"><span class="map-label">${esc(station.call)}</span></button>`;
+  }).join('');
 }
 
 function transmit(builder) {
@@ -415,10 +665,10 @@ function switchView(name) {
   document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === `view-${name}`));
   const copy = {
     dashboard: ['Dashboard', 'Live APRSNET status, packets, stations and operational state.'],
-    map: ['Tactical Map', 'Native station plot fed by APRSNET GeoJSON and WebSocket updates.'],
-    messages: ['Messages', 'Read recent APRS messages and transmit through authenticated APRSNET WebSocket.'],
+    map: ['Tactical Map', 'Zoomable OpenStreetMap station plot fed by APRSNET GeoJSON and WebSocket updates.'],
+    messages: ['Messages', 'Synced APRSNET message history with chat bubbles and authenticated APRS transmit.'],
     transmit: ['Transmit', 'Build and preview APRS messages, beacons, objects and raw packets.'],
-    weather: ['Weather', 'Weather warning data from APRSNET APIs.'],
+    weather: ['Weather', 'Nearest APRS weather stations from APRSNET using your saved or device location.'],
     analytics: ['Analytics', 'Network, propagation and activity analytics from APRSNET.'],
     settings: ['Settings', 'Credentials, position and desktop integration.']
   }[name];
@@ -428,7 +678,9 @@ function switchView(name) {
 }
 
 async function refreshAll() {
-  await Promise.all([loadStatus(), loadStations(), loadMessages(), loadWeather(), loadAnalytics()]);
+  await Promise.all([loadStatus(), loadMessages(), loadAnalytics()]);
+  await loadStations();
+  await loadWeather();
 }
 
 async function init() {
@@ -441,7 +693,15 @@ async function init() {
   document.querySelectorAll('.nav').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
   document.querySelectorAll('input, textarea').forEach(node => node.addEventListener('input', () => { updatePreviews(); drawMap(); }));
   document.addEventListener('click', event => {
-    const button = event.target.closest('[data-call]');
+    const conv = event.target.closest('[data-conversation]');
+    if (conv) {
+      state.selectedConversation = conv.dataset.conversation;
+      $('message-to').value = state.selectedConversation;
+      renderMessages();
+      updatePreviews();
+      return;
+    }
+    const button = event.target.closest('.call-button[data-call], .map-marker[data-call]');
     if (!button) return;
     $('message-to').value = button.dataset.call;
     switchView('messages');
@@ -454,7 +714,32 @@ async function init() {
   $('refresh-weather').addEventListener('click', loadWeather);
   $('refresh-analytics').addEventListener('click', loadAnalytics);
   $('clear-packets').addEventListener('click', () => { state.packets = []; renderPackets(); });
-  $('fit-map').addEventListener('click', drawMap);
+  $('fit-map').addEventListener('click', fitMapToStations);
+  $('map-zoom-in').addEventListener('click', () => { state.map.zoom = Math.min(18, state.map.zoom + 1); drawMap(); });
+  $('map-zoom-out').addEventListener('click', () => { state.map.zoom = Math.max(2, state.map.zoom - 1); drawMap(); });
+  $('map').addEventListener('wheel', event => {
+    event.preventDefault();
+    state.map.zoom = Math.max(2, Math.min(18, state.map.zoom + (event.deltaY < 0 ? 1 : -1)));
+    drawMap();
+  }, { passive: false });
+  $('map').addEventListener('mousedown', event => {
+    const center = project(state.map.lat, state.map.lon, state.map.zoom);
+    state.map.dragging = true;
+    state.map.dragStart = { x: event.clientX, y: event.clientY };
+    state.map.dragCenter = center;
+    $('map').classList.add('dragging');
+  });
+  window.addEventListener('mousemove', event => {
+    if (!state.map.dragging) return;
+    const dx = event.clientX - state.map.dragStart.x;
+    const dy = event.clientY - state.map.dragStart.y;
+    setMapCenterFromPixels(state.map.dragCenter.x - dx, state.map.dragCenter.y - dy, state.map.zoom);
+    drawMap();
+  });
+  window.addEventListener('mouseup', () => {
+    state.map.dragging = false;
+    $('map').classList.remove('dragging');
+  });
   $('send-message').addEventListener('click', () => transmit(messagePacket));
   $('send-beacon').addEventListener('click', () => transmit(beaconPacket));
   $('send-object').addEventListener('click', () => transmit(objectPacket));

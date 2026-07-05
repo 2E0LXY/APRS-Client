@@ -10,6 +10,10 @@ This repository is now the native APRSNET desktop application. It is not a brows
 - Direct APRSNET WebSocket connection for live packets, objects, alerts and authenticated transmit
 - Main-process REST proxy restricted to APRSNET `/api/*` routes
 - Station table and tactical canvas map from APRSNET GeoJSON/API data
+- Zoomable OpenStreetMap tactical map with live APRSNET station markers
+- Nearest six APRS weather stations from the user's saved/device location
+- Synced member message history displayed as conversation threads with chat bubbles
+- Readable analytics dashboard with summary cards, activity heatmap, reliability and long-path tables
 - APRS message, position beacon, object and raw packet builders with previews before transmit
 - APRSNET member login token storage for member-backed API calls
 - Member login verification can autofill callsign and APRS-IS passcode when APRSNET returns them
