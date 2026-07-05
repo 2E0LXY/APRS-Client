@@ -179,6 +179,11 @@ label { display: grid; gap: 6px; margin-bottom: 10px; }
 .check { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
 .check input { width: auto; }
 .settings { max-width: 900px; }
+.settings-actions { margin: 2px 0 14px; }
+.inline-state { color: var(--muted); }
+.inline-state.ok { color: var(--green); }
+.inline-state.bad { color: var(--red); }
+.inline-state.warn { color: var(--amber); }
 
 .map-panel { height: calc(100vh - 126px); display: flex; flex-direction: column; }
 #map {

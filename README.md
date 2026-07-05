@@ -12,6 +12,7 @@ This repository is now the native APRSNET desktop application. It is not a brows
 - Station table and tactical canvas map from APRSNET GeoJSON/API data
 - APRS message, position beacon, object and raw packet builders with previews before transmit
 - APRSNET member login token storage for member-backed API calls
+- Member login verification can autofill callsign and APRS-IS passcode when APRSNET returns them
 - Desktop notifications, tray menu, single-instance behaviour and launch-on-startup support
 - Windows NSIS installer and Debian `.deb` packaging through Electron Builder
 

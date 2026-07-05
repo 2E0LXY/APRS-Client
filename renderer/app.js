@@ -158,13 +158,101 @@ async function loadAnalytics() {
 
 async function loginMember() {
   if (!state.settings.autoMemberLogin || !state.settings.memberUser || !state.settings.memberPass) return;
+  await verifyMemberLogin({ silent: true });
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  }
+  return '';
+}
+
+function memberLoginAutofillPatch(data) {
+  const user = data?.user || data?.member || data?.account || data?.profile || {};
+  const callsign = firstValue(
+    data?.callsign,
+    data?.call,
+    data?.aprs_callsign,
+    data?.aprsCallsign,
+    data?.station_callsign,
+    data?.stationCallsign,
+    user?.callsign,
+    user?.call,
+    user?.aprs_callsign,
+    user?.aprsCallsign,
+    user?.station_callsign,
+    user?.stationCallsign
+  );
+  const passcode = firstValue(
+    data?.passcode,
+    data?.aprs_passcode,
+    data?.aprsPasscode,
+    data?.aprs_is_passcode,
+    data?.aprsIsPasscode,
+    data?.aprsis_passcode,
+    data?.aprsisPasscode,
+    user?.passcode,
+    user?.aprs_passcode,
+    user?.aprsPasscode,
+    user?.aprs_is_passcode,
+    user?.aprsIsPasscode,
+    user?.aprsis_passcode,
+    user?.aprsisPasscode
+  );
+  const patch = {};
+  if (callsign) patch.callsign = call(callsign);
+  if (passcode) patch.passcode = String(passcode).trim();
+  return patch;
+}
+
+function memberLoginToken(data) {
+  const user = data?.user || data?.member || data?.account || data?.profile || {};
+  return firstValue(data?.token, data?.memberToken, data?.session_token, data?.sessionToken, user?.token, user?.memberToken, user?.session_token, user?.sessionToken);
+}
+
+function setMemberLoginState(kind, text) {
+  const node = $('member-login-state');
+  if (!node) return;
+  node.className = `inline-state ${kind}`;
+  node.textContent = text;
+}
+
+function setSaveState(kind, text) {
+  const node = $('settings-save-state');
+  if (!node) return;
+  node.className = `inline-state ${kind}`;
+  node.textContent = text;
+}
+
+async function verifyMemberLogin(options = {}) {
+  const memberUser = clean($('set-member-user')?.value || state.settings.memberUser);
+  const memberPass = $('set-member-pass')?.value || state.settings.memberPass;
+  if (!memberUser || !memberPass) {
+    if (!options.silent) setMemberLoginState('warn', 'Enter member user and password first');
+    return false;
+  }
+  if (!options.silent) setMemberLoginState('warn', 'Checking member login...');
   const response = await api('/api/member/login', {
     method: 'POST',
-    body: { callsign: state.settings.memberUser, password: state.settings.memberPass }
+    body: { callsign: memberUser, username: memberUser, password: memberPass }
   });
-  if (response.ok && response.data?.token) {
-    state.settings = await window.aprsnet.saveSettings({ memberToken: response.data.token });
+  const token = memberLoginToken(response.data || {});
+  if (response.ok && token) {
+    const autofill = memberLoginAutofillPatch(response.data);
+    const patch = Object.assign({ memberUser, memberPass, memberToken: token }, autofill);
+    state.settings = await window.aprsnet.saveSettings(patch);
+    hydrateSettings();
+    updatePreviews();
+    authWebSocket();
+    const filled = [autofill.callsign ? 'callsign' : '', autofill.passcode ? 'APRS-IS passcode' : ''].filter(Boolean);
+    if (!options.silent) {
+      setMemberLoginState('ok', filled.length ? `Member login OK; filled ${filled.join(' and ')}` : 'Member login OK; no callsign/passcode returned');
+    }
+    return true;
   }
+  if (!options.silent) setMemberLoginState('bad', response.error || 'Member login failed');
+  return false;
 }
 
 function connectWebSocket() {
@@ -278,20 +366,33 @@ function transmit(builder) {
 }
 
 async function saveSettings() {
-  state.settings = await window.aprsnet.saveSettings({
-    callsign: call($('set-callsign').value),
-    passcode: clean($('set-passcode').value),
+  setSaveState('warn', 'Saving settings...');
+  const memberUser = clean($('set-member-user').value);
+  const memberPass = $('set-member-pass').value;
+  const memberChanged = memberUser !== clean(state.settings.memberUser) || memberPass !== (state.settings.memberPass || '');
+  const patch = {
     memberUser: clean($('set-member-user').value),
     memberPass: $('set-member-pass').value,
+    callsign: call($('set-callsign').value),
+    passcode: clean($('set-passcode').value),
     manualLat: clean($('set-lat').value) === '' ? null : Number($('set-lat').value),
     manualLon: clean($('set-lon').value) === '' ? null : Number($('set-lon').value),
     notifications: $('set-notifications').checked,
     minimizeToTray: $('set-tray').checked,
     launchOnStartup: $('set-startup').checked,
     watchlist: $('watchlist').value
-  });
-  authWebSocket();
-  updatePreviews();
+  };
+  try {
+    state.settings = await window.aprsnet.saveSettings(patch);
+    let verified = false;
+    if (memberChanged && memberUser && memberPass) verified = await verifyMemberLogin({ silent: false });
+    authWebSocket();
+    updatePreviews();
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setSaveState('ok', verified ? `Saved and member login verified at ${timestamp}` : `Settings saved at ${timestamp}`);
+  } catch (err) {
+    setSaveState('bad', `Save failed: ${err.message || err}`);
+  }
 }
 
 function hydrateSettings() {
@@ -359,6 +460,7 @@ async function init() {
   $('send-object').addEventListener('click', () => transmit(objectPacket));
   $('send-raw').addEventListener('click', () => transmit(rawPacket));
   $('save-settings').addEventListener('click', saveSettings);
+  $('verify-member').addEventListener('click', () => verifyMemberLogin({ silent: false }));
   $('use-position').addEventListener('click', async () => {
     const position = await window.aprsnet.getPosition();
     if (!position) return;

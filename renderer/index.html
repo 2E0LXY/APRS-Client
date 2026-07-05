@@ -137,12 +137,16 @@
       <section class="panel form settings">
         <h2>Connection and Desktop Settings</h2>
         <div class="row">
-          <label>Callsign<input id="set-callsign" autocomplete="off"></label>
-          <label>APRS-IS passcode<input id="set-passcode" type="password"></label>
-        </div>
-        <div class="row">
           <label>Member user<input id="set-member-user" autocomplete="off"></label>
           <label>Member password<input id="set-member-pass" type="password"></label>
+        </div>
+        <div class="tools settings-actions">
+          <button id="verify-member" type="button">Verify Member Login</button>
+          <span id="member-login-state" class="inline-state">Not verified</span>
+        </div>
+        <div class="row">
+          <label>Callsign<input id="set-callsign" autocomplete="off"></label>
+          <label>APRS-IS passcode<input id="set-passcode" type="password"></label>
         </div>
         <div class="row">
           <label>Manual latitude<input id="set-lat"></label>
@@ -151,7 +155,10 @@
         <label class="check"><input id="set-notifications" type="checkbox"> Desktop notifications</label>
         <label class="check"><input id="set-tray" type="checkbox"> Minimise to tray</label>
         <label class="check"><input id="set-startup" type="checkbox"> Launch on startup</label>
-        <button id="save-settings" class="primary">Save Settings</button>
+        <div class="tools settings-actions">
+          <button id="save-settings" class="primary">Save Settings</button>
+          <span id="settings-save-state" class="inline-state">Not saved this session</span>
+        </div>
       </section>
     </section>
   </main>
