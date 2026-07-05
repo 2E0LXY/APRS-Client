@@ -9,8 +9,12 @@ const state = {
   messages: [],
   selectedConversation: '',
   userLocation: null,
-  map: { lat: 54.5, lon: -2.5, zoom: 6, dragging: false, dragStart: null, dragCenter: null, dragMoved: false, suppressClick: false, frame: null, tileNodes: new Map(), markerNodes: new Map() }
+  map: { lat: 54.5, lon: -2.5, zoom: 6, dragging: false, dragStart: null, dragCenter: null, dragMoved: false, suppressClick: false, frame: null, lastDragDraw: 0, tileNodes: new Map(), markerNodes: new Map() }
 };
+
+const MAX_VISIBLE_MARKERS = 900;
+const CLUSTER_ZOOM_LIMIT = 10;
+const CLUSTER_CELL_SIZE = 58;
 
 const $ = (id) => document.getElementById(id);
 const clean = (value) => String(value || '').trim();
@@ -679,6 +683,30 @@ function setMapCenterFromPixels(pixelX, pixelY, zoom) {
   state.map.lat = tileYToLat(pixelY / 256, zoom);
 }
 
+function zoomMap(delta, anchorEvent = null) {
+  const map = $('map');
+  if (!map || !map.clientWidth || !map.clientHeight) return;
+  const oldZoom = Math.max(2, Math.min(18, state.map.zoom));
+  const newZoom = Math.max(2, Math.min(18, oldZoom + delta));
+  if (newZoom === oldZoom) return;
+  const rect = map.getBoundingClientRect();
+  const anchorX = anchorEvent ? anchorEvent.clientX - rect.left : map.clientWidth / 2;
+  const anchorY = anchorEvent ? anchorEvent.clientY - rect.top : map.clientHeight / 2;
+  const oldCenter = project(state.map.lat, state.map.lon, oldZoom);
+  const oldAnchorWorld = {
+    x: oldCenter.x - map.clientWidth / 2 + anchorX,
+    y: oldCenter.y - map.clientHeight / 2 + anchorY
+  };
+  const scale = 2 ** (newZoom - oldZoom);
+  const newCenter = {
+    x: oldAnchorWorld.x * scale - anchorX + map.clientWidth / 2,
+    y: oldAnchorWorld.y * scale - anchorY + map.clientHeight / 2
+  };
+  state.map.zoom = newZoom;
+  setMapCenterFromPixels(newCenter.x, newCenter.y, newZoom);
+  drawMap();
+}
+
 function fitMapToStations() {
   const stations = [...state.stations.values()].filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
   if (!stations.length) return;
@@ -706,6 +734,56 @@ function fitMapToStations() {
 function drawMap() {
   if (state.map.frame) cancelAnimationFrame(state.map.frame);
   state.map.frame = requestAnimationFrame(renderMap);
+}
+
+function markerParts(marker) {
+  if (!marker.aprsnetParts) {
+    marker.aprsnetParts = {
+      symbol: marker.querySelector('.map-symbol'),
+      overlay: marker.querySelector('.map-overlay'),
+      label: marker.querySelector('.map-label')
+    };
+  }
+  return marker.aprsnetParts;
+}
+
+function markerNode(key) {
+  let marker = state.map.markerNodes.get(key);
+  if (!marker) {
+    marker = document.createElement('button');
+    marker.className = 'map-marker';
+    marker.dataset.marker = key;
+    marker.type = 'button';
+    marker.innerHTML = '<span class="map-symbol"></span><span class="map-overlay"></span><span class="map-label"></span>';
+    state.map.markerNodes.set(key, marker);
+  }
+  return marker;
+}
+
+function updateClusterMarker(marker, cluster) {
+  marker.className = 'map-marker cluster';
+  delete marker.dataset.call;
+  marker.dataset.cluster = 'true';
+  marker.title = `${cluster.count} APRS stations near this area. Zoom in for individual stations.`;
+  marker.style.transform = `translate(${Math.round(cluster.x)}px, ${Math.round(cluster.y)}px) translate(-50%, -50%)`;
+  const parts = markerParts(marker);
+  parts.symbol.textContent = cluster.count > 99 ? '99+' : String(cluster.count);
+  parts.overlay.textContent = '';
+  parts.label.textContent = `${cluster.count} stations`;
+}
+
+function updateStationMarker(marker, station, x, y, watch) {
+  marker.dataset.call = station.call;
+  delete marker.dataset.cluster;
+  const isWx = !!parseWXPacket(station.raw);
+  const view = aprsSymbolView(station);
+  marker.className = ['map-marker', station.type === 'object' ? 'object' : '', watch.has(station.call.toUpperCase()) ? 'watch' : '', isWx ? 'wx' : ''].filter(Boolean).join(' ');
+  marker.title = `${station.call} - ${view.label} (${view.key})`;
+  marker.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+  const parts = markerParts(marker);
+  parts.symbol.textContent = view.glyph;
+  parts.overlay.textContent = view.overlay;
+  parts.label.textContent = station.call;
 }
 
 function renderMap() {
@@ -752,41 +830,70 @@ function renderMap() {
 
   const watch = new Set(clean($('watchlist').value).toUpperCase().split(/[,\s]+/).filter(Boolean));
   const activeMarkers = new Set();
-  for (const station of [...state.stations.values()].filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))) {
+  const visibleStations = [];
+  const visibleClusters = new Map();
+  for (const station of state.stations.values()) {
+    if (!Number.isFinite(station.lat) || !Number.isFinite(station.lon)) continue;
     const point = project(station.lat, station.lon, zoom);
     const x = Math.round(point.x - left);
     const y = Math.round(point.y - top);
+    if (x < -90 || y < -50 || x > map.clientWidth + 120 || y > map.clientHeight + 60) continue;
+    if (zoom < CLUSTER_ZOOM_LIMIT && !watch.has(station.call.toUpperCase())) {
+      const cellX = Math.floor(x / CLUSTER_CELL_SIZE);
+      const cellY = Math.floor(y / CLUSTER_CELL_SIZE);
+      const key = `cluster:${cellX}:${cellY}`;
+      const cluster = visibleClusters.get(key) || { key, call: station.call, count: 0, x: 0, y: 0, newest: 0 };
+      cluster.count += 1;
+      cluster.x += x;
+      cluster.y += y;
+      if ((station.ts || 0) > cluster.newest) {
+        cluster.call = station.call;
+        cluster.newest = station.ts || 0;
+      }
+      visibleClusters.set(key, cluster);
+      continue;
+    }
+    visibleStations.push({ station, x, y });
+  }
+
+  let rendered = 0;
+  const fragment = document.createDocumentFragment();
+  for (const cluster of visibleClusters.values()) {
+    if (cluster.count === 1) continue;
+    cluster.x /= cluster.count;
+    cluster.y /= cluster.count;
+    activeMarkers.add(cluster.key);
+    const marker = markerNode(cluster.key);
+    updateClusterMarker(marker, cluster);
+    if (!marker.parentNode) fragment.appendChild(marker);
+    rendered += 1;
+  }
+
+  const clusterSingles = [];
+  for (const cluster of visibleClusters.values()) {
+    if (cluster.count !== 1) continue;
+    const station = state.stations.get(cluster.call);
+    if (!station) continue;
+    clusterSingles.push({ station, x: Math.round(cluster.x), y: Math.round(cluster.y) });
+  }
+
+  for (const item of visibleStations.concat(clusterSingles).sort((a, b) => (b.station.ts || 0) - (a.station.ts || 0)).slice(0, MAX_VISIBLE_MARKERS)) {
+    const { station, x, y } = item;
     const key = `station:${station.call}`;
     activeMarkers.add(key);
-    let marker = state.map.markerNodes.get(key);
-    if (!marker) {
-      marker = document.createElement('button');
-      marker.className = 'map-marker';
-      marker.dataset.marker = key;
-      marker.dataset.call = station.call;
-      marker.type = 'button';
-      marker.innerHTML = '<span class="map-symbol"></span><span class="map-overlay"></span><span class="map-label"></span>';
-      markers.appendChild(marker);
-      state.map.markerNodes.set(key, marker);
-    }
-    const hidden = x < -90 || y < -50 || x > map.clientWidth + 120 || y > map.clientHeight + 60;
-    marker.hidden = hidden;
-    if (hidden) continue;
-    const isWx = !!parseWXPacket(station.raw);
-    const view = aprsSymbolView(station);
-    marker.className = ['map-marker', station.type === 'object' ? 'object' : '', watch.has(station.call.toUpperCase()) ? 'watch' : '', isWx ? 'wx' : ''].filter(Boolean).join(' ');
-    marker.title = `${station.call} - ${view.label} (${view.key})`;
-    marker.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
-    marker.querySelector('.map-symbol').textContent = view.glyph;
-    marker.querySelector('.map-overlay').textContent = view.overlay;
-    marker.querySelector('.map-label').textContent = station.call;
+    const marker = markerNode(key);
+    updateStationMarker(marker, station, x, y, watch);
+    if (!marker.parentNode) fragment.appendChild(marker);
+    rendered += 1;
   }
+  if (fragment.childNodes.length) markers.appendChild(fragment);
   state.map.markerNodes.forEach((marker, key) => {
     if (!activeMarkers.has(key)) {
       marker.remove();
       state.map.markerNodes.delete(key);
     }
   });
+  $('map-attribution').textContent = `${rendered.toLocaleString()} shown / ${state.stations.size.toLocaleString()} heard - OpenStreetMap`;
 }
 
 function transmit(builder) {
@@ -898,7 +1005,7 @@ async function init() {
   updatePreviews();
 
   document.querySelectorAll('.nav').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
-  document.querySelectorAll('input, textarea').forEach(node => node.addEventListener('input', () => { updatePreviews(); drawMap(); }));
+  document.querySelectorAll('input, textarea').forEach(node => node.addEventListener('input', updatePreviews));
   document.addEventListener('click', event => {
     if (state.map.suppressClick) {
       event.preventDefault();
@@ -911,6 +1018,11 @@ async function init() {
       $('message-to').value = state.selectedConversation;
       renderMessages();
       updatePreviews();
+      return;
+    }
+    const cluster = event.target.closest('.map-marker[data-cluster]');
+    if (cluster) {
+      zoomMap(1, event);
       return;
     }
     const button = event.target.closest('.call-button[data-call], .map-marker[data-call]');
@@ -929,16 +1041,15 @@ async function init() {
   $('refresh-analytics').addEventListener('click', loadAnalytics);
   $('clear-packets').addEventListener('click', () => { state.packets = []; renderPackets(); });
   $('fit-map').addEventListener('click', fitMapToStations);
-  $('map-zoom-in').addEventListener('click', () => { state.map.zoom = Math.min(18, state.map.zoom + 1); drawMap(); });
-  $('map-zoom-out').addEventListener('click', () => { state.map.zoom = Math.max(2, state.map.zoom - 1); drawMap(); });
+  $('map-zoom-in').addEventListener('click', () => zoomMap(1));
+  $('map-zoom-out').addEventListener('click', () => zoomMap(-1));
   $('watchlist').addEventListener('change', async () => {
     state.settings = await window.aprsnet.saveSettings({ watchlist: $('watchlist').value });
     drawMap();
   });
   $('map').addEventListener('wheel', event => {
     event.preventDefault();
-    state.map.zoom = Math.max(2, Math.min(18, state.map.zoom + (event.deltaY < 0 ? 1 : -1)));
-    drawMap();
+    zoomMap(event.deltaY < 0 ? 1 : -1, event);
   }, { passive: false });
   $('map').addEventListener('mousedown', event => {
     if (event.target.closest('.map-controls, input, textarea')) return;
@@ -955,7 +1066,11 @@ async function init() {
     const dy = event.clientY - state.map.dragStart.y;
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) state.map.dragMoved = true;
     setMapCenterFromPixels(state.map.dragCenter.x - dx, state.map.dragCenter.y - dy, state.map.zoom);
-    drawMap();
+    const now = performance.now();
+    if (now - state.map.lastDragDraw > 32) {
+      state.map.lastDragDraw = now;
+      drawMap();
+    }
   });
   window.addEventListener('mouseup', () => {
     if (state.map.dragging && state.map.dragMoved) {
@@ -964,6 +1079,7 @@ async function init() {
     }
     state.map.dragging = false;
     $('map').classList.remove('dragging');
+    drawMap();
   });
   window.addEventListener('resize', drawMap);
   $('send-message').addEventListener('click', transmitMessage);

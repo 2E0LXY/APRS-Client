@@ -225,6 +225,17 @@ label { display: grid; gap: 6px; margin-bottom: 10px; }
 .map-marker.object { border-color: #0c3a62; box-shadow: 0 0 0 2px rgba(101,183,255,.35), 0 4px 12px rgba(0,0,0,.45); }
 .map-marker.watch { border-color: #8a5e00; box-shadow: 0 0 0 3px rgba(241,189,85,.45), 0 4px 12px rgba(0,0,0,.45); }
 .map-marker.wx { background: #ffefc2; border-color: #ff8f45; }
+.map-marker.cluster {
+  min-width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: #27d99a;
+  color: #02120c;
+  border-color: #d8fff0;
+  box-shadow: 0 0 0 4px rgba(39,217,154,.2), 0 8px 18px rgba(0,0,0,.45);
+}
+.map-marker.cluster .map-symbol { min-width: 32px; height: 32px; font-size: 12px; }
+.map-marker.cluster .map-label { left: 40px; top: 9px; }
 .map-symbol {
   display: grid;
   place-items: center;
