@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' https://www.aprsnet.uk wss://www.aprsnet.uk;">
+  <title>APRSNET Desktop</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="rail">
+    <div class="brand">
+      <img src="../assets/icon.png" alt="">
+      <div><strong>APRSNET</strong><span>Desktop Client</span></div>
+    </div>
+    <button class="nav active" data-view="dashboard">Dashboard</button>
+    <button class="nav" data-view="map">Map</button>
+    <button class="nav" data-view="messages">Messages</button>
+    <button class="nav" data-view="transmit">Transmit</button>
+    <button class="nav" data-view="weather">Weather</button>
+    <button class="nav" data-view="analytics">Analytics</button>
+    <button class="nav" data-view="settings">Settings</button>
+    <details class="rail-filters" open>
+      <summary>
+        <span>Map Filters</span>
+        <em id="filter-sync-state">local</em>
+      </summary>
+      <div id="map-filter-grid" class="map-filter-list">
+        <div class="filter-group">
+          <strong>Station Types</strong>
+          <label><input type="checkbox" data-pref="show_aprs"> <span class="dot ham"></span>Ham APRS</label>
+          <label><input type="checkbox" data-pref="show_cwop"> <span class="dot wx"></span>CWOP Weather</label>
+          <label><input type="checkbox" data-pref="show_ogn"> <span class="dot ogn"></span>OGN Gliders</label>
+          <label><input type="checkbox" data-pref="show_objects"> <span class="dot object"></span>Objects/Items</label>
+          <label><input type="checkbox" data-pref="show_lora_aprsis"> <span class="dot lora"></span>LoRa via APRS-IS</label>
+        </div>
+        <div class="filter-group">
+          <strong>Display</strong>
+          <label><input type="checkbox" data-pref="hide_static"> Hide static &gt;5 min</label>
+          <label><input type="checkbox" data-pref="ghost_old"> Ghost stale stations</label>
+          <label><input type="checkbox" data-pref="cluster_enable"> Cluster markers</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_phg"> PHG circles</label>
+          <label class="unsupported"><input type="checkbox" data-pref="auto_fit"> Auto-fit zoom</label>
+          <label class="unsupported"><input type="checkbox" data-pref="prop_lines"> Range lines to you</label>
+          <label class="unsupported"><input type="checkbox" data-pref="wx_radar"> Weather radar</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_all_connections"> All P2P connections</label>
+        </div>
+        <div class="filter-group">
+          <strong>Hide / Overlays</strong>
+          <label><input type="checkbox" data-pref="drop_pistar"> Digital voice beacons</label>
+          <label><input type="checkbox" data-pref="drop_dstar"> D-STAR routes</label>
+          <label><input type="checkbox" data-pref="drop_apdesk"> APDESK status</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_seamarks"> Sea marks</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_ships"> Live ships AIS</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_lora"> LoRa network</label>
+        </div>
+      </div>
+    </details>
+    <div class="rail-foot">
+      <span id="app-version">v-</span>
+      <button id="open-site">APRSNET.uk</button>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div>
+        <h1 id="view-title">Dashboard</h1>
+        <p id="view-copy">Live APRSNET status, packets, stations and operational state.</p>
+      </div>
+      <div class="pills">
+        <span id="ws-state" class="pill warn">WS starting</span>
+        <span id="auth-state" class="pill warn">RX only</span>
+        <span id="api-state" class="pill warn">API unknown</span>
+      </div>
+    </header>
+
+    <section id="view-dashboard" class="view active">
+      <div class="metrics">
+        <article><span>Packets RX</span><strong id="metric-packets">-</strong><em id="metric-rate">0/min</em></article>
+        <article><span>Stations</span><strong id="metric-stations">0</strong><em id="metric-objects">0 objects</em></article>
+        <article><span>Clients</span><strong id="metric-clients">-</strong><em id="metric-tcp">0 TCP</em></article>
+        <article><span>Uptime</span><strong id="metric-uptime">-</strong><em id="metric-ring">ring -</em></article>
+      </div>
+      <div class="grid two">
+        <section class="panel">
+          <div class="panel-head"><h2>Live Packet Feed</h2><button id="clear-packets">Clear</button></div>
+          <div id="packet-feed" class="feed"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Fresh Stations</h2><button id="refresh-now">Refresh</button></div>
+          <table>
+            <thead><tr><th>Call</th><th>Age</th><th>Position</th><th>Path</th></tr></thead>
+            <tbody id="station-table"></tbody>
+          </table>
+        </section>
+      </div>
+    </section>
+
+    <section id="view-map" class="view">
+      <section class="panel map-panel">
+        <div class="panel-head">
+          <h2>Tactical Map</h2>
+          <div class="tools">
+            <input id="watchlist" placeholder="Watch callsigns, comma separated">
+            <button id="fit-map">Fit</button>
+          </div>
+        </div>
+        <div id="map" class="osm-map">
+          <div id="map-tiles" class="map-tiles"></div>
+          <div id="map-markers" class="map-markers"></div>
+          <aside id="station-detail" class="station-detail hidden"></aside>
+          <div class="map-controls">
+            <button id="map-zoom-in" type="button">+</button>
+            <button id="map-zoom-out" type="button">-</button>
+          </div>
+          <div id="map-attribution">OpenStreetMap</div>
+        </div>
+      </section>
+    </section>
+
+    <section id="view-messages" class="view">
+      <div class="messages-layout">
+        <section class="panel conversation-panel">
+          <div class="panel-head"><h2>Conversations</h2><button id="refresh-messages">Refresh</button></div>
+          <div id="conversation-list" class="conversation-list"></div>
+        </section>
+        <section class="panel chat-panel">
+          <div class="panel-head">
+            <div><h2 id="chat-title">Select a conversation</h2><p id="chat-subtitle">Synced from APRSNET member message history where available.</p></div>
+            <div class="chat-actions">
+              <button id="delete-conversation" type="button" class="danger" disabled>Delete Conversation</button>
+              <span id="message-sync-state" class="inline-state">Member sync required for deletes</span>
+            </div>
+          </div>
+          <div id="message-feed" class="chat-feed"></div>
+          <div class="composer">
+            <input id="message-to" maxlength="9" autocomplete="off" placeholder="To callsign">
+            <textarea id="message-text" maxlength="67" placeholder="Message text"></textarea>
+            <div class="tools">
+              <input id="message-id" value="01" maxlength="5" title="Message ID">
+              <button id="send-message" class="primary">Send</button>
+            </div>
+            <pre id="message-preview" class="preview"></pre>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="view-transmit" class="view">
+      <div class="grid two">
+        <section class="panel form">
+          <h2>Position Beacon</h2>
+          <div class="row">
+            <label>Latitude<input id="beacon-lat"></label>
+            <label>Longitude<input id="beacon-lon"></label>
+            <label>SSID<input id="beacon-ssid" value="9" maxlength="2"></label>
+          </div>
+          <label>Comment<input id="beacon-comment" value="APRSNET Desktop"></label>
+          <pre id="beacon-preview" class="preview"></pre>
+          <div class="tools"><button id="use-position">Use saved position</button><button id="send-beacon" class="primary">Transmit Beacon</button></div>
+        </section>
+        <section class="panel form">
+          <h2>Object and Raw Packet</h2>
+          <div class="row">
+            <label>Object<input id="object-name" maxlength="9"></label>
+            <label>Latitude<input id="object-lat"></label>
+            <label>Longitude<input id="object-lon"></label>
+          </div>
+          <label>Comment<input id="object-comment"></label>
+          <pre id="object-preview" class="preview"></pre>
+          <button id="send-object" class="primary">Transmit Object</button>
+          <label>Raw packet<textarea id="raw-packet"></textarea></label>
+          <button id="send-raw" class="danger">Transmit Raw Packet</button>
+        </section>
+      </div>
+    </section>
+
+    <section id="view-weather" class="view">
+      <section class="panel">
+        <div class="panel-head">
+          <div><h2>Nearest APRS Weather Stations</h2><p id="weather-origin">Using saved/user location when available.</p></div>
+          <button id="refresh-weather">Refresh</button>
+        </div>
+        <div id="weather-summary" class="metrics compact"></div>
+        <div id="weather-grid" class="cards"></div>
+      </section>
+    </section>
+
+    <section id="view-analytics" class="view">
+      <section class="panel">
+        <div class="panel-head"><h2>Analytics</h2><button id="refresh-analytics">Refresh</button></div>
+        <div id="analytics-grid" class="analytics-layout"></div>
+      </section>
+    </section>
+
+    <section id="view-settings" class="view">
+      <section class="panel form settings">
+        <h2>Connection and Desktop Settings</h2>
+        <div class="row">
+          <label>Member user<input id="set-member-user" autocomplete="off"></label>
+          <label>Member password<input id="set-member-pass" type="password"></label>
+        </div>
+        <div class="tools settings-actions">
+          <button id="verify-member" type="button">Verify Member Login</button>
+          <span id="member-login-state" class="inline-state">Not verified</span>
+        </div>
+        <div class="row">
+          <label>Callsign<input id="set-callsign" autocomplete="off"></label>
+          <label>APRS-IS passcode<input id="set-passcode" type="password"></label>
+        </div>
+        <div class="row">
+          <label>Manual latitude<input id="set-lat"></label>
+          <label>Manual longitude<input id="set-lon"></label>
+        </div>
+        <label class="check"><input id="set-notifications" type="checkbox"> Desktop notifications</label>
+        <label class="check"><input id="set-tray" type="checkbox"> Minimise to tray</label>
+        <label class="check"><input id="set-startup" type="checkbox"> Launch on startup</label>
+        <div class="tools settings-actions">
+          <button id="save-settings" class="primary">Save Settings</button>
+          <span id="settings-save-state" class="inline-state">Not saved this session</span>
+        </div>
+      </section>
+      <section class="panel form settings geofence-panel">
+        <div class="panel-head">
+          <div><h2>Geo-fence Rules</h2><p>Synced with APRSNET member geo-fence alerts.</p></div>
+          <button id="refresh-geofences" type="button">Refresh</button>
+        </div>
+        <div class="row">
+          <label>Name<input id="gf-name" placeholder="Home area"></label>
+          <label>Callsign<input id="gf-call" placeholder="* or callsign"></label>
+          <label>Type<select id="gf-type"><option value="geofence_enter">Enter zone</option><option value="geofence_exit">Leave zone</option></select></label>
+          <label>Radius mi<input id="gf-radius" value="10"></label>
+        </div>
+        <div class="row">
+          <label>Latitude<input id="gf-lat"></label>
+          <label>Longitude<input id="gf-lon"></label>
+        </div>
+        <div class="tools settings-actions">
+          <button id="gf-use-map" type="button">Use Selected Station</button>
+          <button id="gf-add" type="button" class="primary">Add Synced Rule</button>
+          <span id="gf-state" class="inline-state">Sign in as member to sync rules</span>
+        </div>
+        <div id="geofence-list" class="geofence-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

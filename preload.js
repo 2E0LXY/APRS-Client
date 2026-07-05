@@ -1,30 +1,20 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Bridge between the sandboxed web page and the Electron main process.
-// Everything the website's injected overlay can do is listed here.
-contextBridge.exposeInMainWorld('aprsClient', {
-  // Settings (includes website appearance preferences)
-  getSettings:      ()        => ipcRenderer.invoke('get-settings'),
-  saveSettings:     (s)       => ipcRenderer.invoke('save-settings', s),
-
-  // Fixed server endpoints (always aprsnet.uk)
-  getServer:        ()        => ipcRenderer.invoke('get-server'),
-  connectToServer:  ()        => ipcRenderer.invoke('connect-to-server'),
-  probeServer:      ()        => ipcRenderer.invoke('probe-server'),
-  goBack:           ()        => ipcRenderer.invoke('go-back'),
-
-  // Desktop integration
-  showNotification: (t, b)    => ipcRenderer.invoke('show-notification', t, b),
-  getVersion:       ()        => ipcRenderer.invoke('get-version'),
-  openExternal:     (url)     => ipcRenderer.invoke('open-external', url),
-  reloadWindow:     ()        => ipcRenderer.invoke('reload-window'),
-
-  // Position / GPS
-  getPosition:      ()        => ipcRenderer.invoke('get-position'),
-  reportPosition:   (pos)     => ipcRenderer.invoke('report-position', pos),
-
-  // Events
-  onSettings:       (cb)      => ipcRenderer.on('settings', (e, s) => cb(s)),
-
-  platform:         process.platform
+contextBridge.exposeInMainWorld('aprsnet', {
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
+  getServer: () => ipcRenderer.invoke('server:get'),
+  api: (request) => ipcRenderer.invoke('api:request', request),
+  getVersion: () => ipcRenderer.invoke('app:version'),
+  openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  reload: () => ipcRenderer.invoke('app:reload'),
+  notify: (title, body) => ipcRenderer.invoke('notify:show', title, body),
+  getPosition: () => ipcRenderer.invoke('position:get'),
+  reportPosition: (position) => ipcRenderer.invoke('position:report', position),
+  onSettingsChanged: (callback) => {
+    const listener = (_event, settings) => callback(settings);
+    ipcRenderer.on('settings-changed', listener);
+    return () => ipcRenderer.removeListener('settings-changed', listener);
+  },
+  platform: process.platform
 });
