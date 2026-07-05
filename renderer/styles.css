@@ -196,6 +196,7 @@ label { display: grid; gap: 6px; margin-bottom: 10px; }
   overflow: hidden;
   background: #0a1712;
   cursor: grab;
+  user-select: none;
 }
 #map.dragging { cursor: grabbing; }
 .map-tiles, .map-markers { position: absolute; inset: 0; }
@@ -205,31 +206,61 @@ label { display: grid; gap: 6px; margin-bottom: 10px; }
   height: 256px;
   user-select: none;
   -webkit-user-drag: none;
+  will-change: transform;
 }
 .map-marker {
   position: absolute;
-  transform: translate(-50%, -50%);
+  display: block;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid #052117;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0b1712;
+  box-shadow: 0 0 0 2px rgba(39,217,154,.25), 0 4px 12px rgba(0,0,0,.45);
+  will-change: transform;
+  user-select: none;
+}
+.map-marker.object { border-color: #0c3a62; box-shadow: 0 0 0 2px rgba(101,183,255,.35), 0 4px 12px rgba(0,0,0,.45); }
+.map-marker.watch { border-color: #8a5e00; box-shadow: 0 0 0 3px rgba(241,189,85,.45), 0 4px 12px rgba(0,0,0,.45); }
+.map-marker.wx { background: #ffefc2; border-color: #ff8f45; }
+.map-symbol {
   display: grid;
   place-items: center;
-  min-width: 12px;
-  height: 12px;
-  border: 2px solid #052117;
-  border-radius: 999px;
-  background: var(--green);
-  box-shadow: 0 0 0 2px rgba(39,217,154,.25), 0 4px 12px rgba(0,0,0,.45);
+  min-width: 24px;
+  height: 24px;
+  padding: 0 3px;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
 }
-.map-marker.object { background: var(--blue); box-shadow: 0 0 0 2px rgba(101,183,255,.25), 0 4px 12px rgba(0,0,0,.45); }
-.map-marker.watch { background: var(--amber); box-shadow: 0 0 0 3px rgba(241,189,85,.35), 0 4px 12px rgba(0,0,0,.45); }
-.map-marker.wx { background: #ff8f45; }
+.map-overlay {
+  position: absolute;
+  left: -7px;
+  top: -8px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 2px;
+  border-radius: 4px;
+  background: #0b1712;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 900;
+}
+.map-overlay:empty { display: none; }
 .map-label {
   position: absolute;
-  left: 10px;
-  top: -3px;
+  left: 30px;
+  top: 4px;
   white-space: nowrap;
   color: var(--text);
   font-size: 11px;
   font-weight: 700;
   text-shadow: 0 1px 3px #000;
+  user-select: none;
 }
 .map-controls {
   position: absolute;

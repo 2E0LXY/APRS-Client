@@ -9,7 +9,7 @@ const state = {
   messages: [],
   selectedConversation: '',
   userLocation: null,
-  map: { lat: 54.5, lon: -2.5, zoom: 6, dragging: false, dragStart: null, dragCenter: null }
+  map: { lat: 54.5, lon: -2.5, zoom: 6, dragging: false, dragStart: null, dragCenter: null, dragMoved: false, suppressClick: false, frame: null, tileNodes: new Map(), markerNodes: new Map() }
 };
 
 const $ = (id) => document.getElementById(id);
@@ -350,6 +350,76 @@ function addPacket(packet, type) {
   renderPackets();
 }
 
+const APRS_SYMBOLS = {
+  '/!': ['Police', '🚓'], '/#': ['Digipeater', '✳'], '/$': ['Phone', '☎'], '/%': ['DX cluster', 'DX'], '/&': ['HF gateway', 'GW'],
+  "/'": ['Aircraft', '✈'], '/(': ['Satellite', '🛰'], '/)': ['Wheelchair', '♿'], '/*': ['Snowmobile', '❄'], '/+': ['Red Cross', '✚'],
+  '/,': ['Scouts', '⚜'], '/-': ['House', '⌂'], '//': ['Waypoint', '•'], '/:': ['Fire', '🔥'], '/;': ['Campground', '⛺'],
+  '/<': ['Motorcycle', '🏍'], '/=': ['Railroad', '🚆'], '/>': ['Car', '🚗'], '/?': ['Server', '?'], '/A': ['Aid station', '✚'],
+  '/B': ['BBS', '▣'], '/C': ['Canoe', '🛶'], '/E': ['Eyeball', '◉'], '/F': ['Farm vehicle', '🚜'], '/H': ['Hotel', '▣'],
+  '/I': ['TCP/IP', 'IP'], '/K': ['School', '⌂'], '/L': ['PC user', '💻'], '/N': ['NTS', 'N'], '/O': ['Balloon', '🎈'],
+  '/P': ['Police', '🚓'], '/R': ['Recreational vehicle', 'RV'], '/S': ['Shuttle', '🚐'], '/U': ['Bus', '🚌'], '/W': ['NWS', 'WX'],
+  '/X': ['Helicopter', '🚁'], '/Y': ['Yacht', '⛵'], '/[': ['Person', '👤'], '/\\': ['Triangle', '△'], '/]': ['Mail', '✉'],
+  '/^': ['Aircraft', '✈'], '/_': ['Weather station', '☂'], '/`': ['Dish antenna', '◌'], '/a': ['Ambulance', '🚑'], '/b': ['Bike', '🚲'],
+  '/c': ['Incident command', 'IC'], '/d': ['Fire department', 'FD'], '/f': ['Fire truck', '🚒'], '/g': ['Glider', '✈'], '/h': ['Hospital', 'H'],
+  '/j': ['Jeep', '▣'], '/k': ['Truck', '🚚'], '/l': ['Laptop', '💻'], '/m': ['Repeater', 'R'], '/n': ['Node', '◎'],
+  '/o': ['EOC', 'E'], '/r': ['Repeater', 'R'], '/s': ['Ship', '⛴'], '/t': ['Truck stop', '⛽'], '/u': ['Truck', '🚛'],
+  '/v': ['Van', '🚐'], '/w': ['Water station', '💧'], '/x': ['Unix APRS', 'X'], '/y': ['Yagi', '⌁'],
+  '\\!': ['Emergency', '!'], '\\#': ['Overlay digipeater', '✳'], '\\$': ['Bank', '$'], '\\%': ['Power plant', '⚡'], '\\&': ['Gateway', 'GW'],
+  "\\'": ['Crash/incident', '⚠'], '\\(': ['Cloudy', '☁'], '\\)': ['Firenet', 'F'], '\\+': ['Church', '✝'], '\\,': ['Girl Scouts', '⚜'],
+  '\\-': ['House', '⌂'], '\\.': ['Ambiguous', '?'], '\\/': ['Destination', '•'], '\\;': ['Park', '♣'], '\\<': ['Advisory', '⚑'],
+  '\\>': ['Vehicle', '🚗'], '\\?': ['Info kiosk', '?'], '\\@': ['Hurricane', '🌀'], '\\A': ['Overlay box', '▣'], '\\C': ['Coast Guard', '⚓'],
+  '\\D': ['Depot', 'D'], '\\E': ['Smoke', '☁'], '\\H': ['Haze', '☁'], '\\I': ['Rain shower', '☔'], '\\K': ['Kenwood HT', '▣'],
+  '\\L': ['Lighthouse', '⌂'], '\\M': ['MARS', 'M'], '\\N': ['Buoy', '⚓'], '\\O': ['Rocket/balloon', '🚀'], '\\P': ['Parking', 'P'],
+  '\\Q': ['Quake', '◈'], '\\R': ['Restaurant', '🍴'], '\\S': ['Satellite', '🛰'], '\\T': ['Thunderstorm', '⛈'], '\\U': ['Sunny', '☀'],
+  '\\V': ['VORTAC', 'V'], '\\W': ['NWS site', 'WX'], '\\X': ['Pharmacy', 'Rx'], '\\Y': ['Radio/device', '📻'], '\\[': ['Wall cloud', '☁'],
+  '\\\\': ['GPS symbol', '△'], '\\^': ['Aircraft', '✈'], '\\_': ['Weather site', '☂'], '\\`': ['Rain', '☔'], '\\a': ['ARES/Winlink', 'A'],
+  '\\c': ['Civil defense', '△'], '\\d': ['DX spot', 'DX'], '\\e': ['Sleet', '☔'], '\\f': ['Funnel cloud', '🌪'], '\\g': ['Gale', '⚑'],
+  '\\h': ['Store', '▣'], '\\i': ['Point of interest', 'i'], '\\j': ['Work zone', '⚒'], '\\k': ['Special vehicle', '▣'], '\\l': ['Area', '▢'],
+  '\\m': ['Value sign', '▣'], '\\n': ['Overlay triangle', '△'], '\\o': ['Circle', '○'], '\\r': ['Restrooms', 'WC'], '\\s': ['Ship', '⛴'],
+  '\\t': ['Tornado', '🌪'], '\\u': ['Truck', '🚛'], '\\v': ['Van', '🚐'], '\\w': ['Flooding', '≈'], '\\x': ['Wreck', '✕'],
+  '\\y': ['Skywarn', '⚡'], '\\z': ['Shelter', '⌂']
+};
+
+function aprsSymbol(raw, supplied = '') {
+  const compact = clean(supplied);
+  if (compact.length >= 2) return { table: compact[0], code: compact[1], overlay: /^[0-9A-Za-z]$/.test(compact[0]) ? compact[0] : '' };
+  const payload = String(raw || '').split(':').slice(1).join(':');
+  if (!payload) return { table: '/', code: '>', overlay: '' };
+  let table = '';
+  let code = '';
+  if ('!='.includes(payload[0]) && payload.length >= 20) {
+    if (/[NS]/.test(payload[8]) && /[EW]/.test(payload[18])) {
+      table = payload[9];
+      code = payload[19];
+    } else if (payload.length >= 11) {
+      table = payload[1];
+      code = payload[10];
+    }
+  } else if ('/@'.includes(payload[0]) && payload.length >= 27) {
+    const offset = /[zZhH/]/.test(payload[7]) ? 7 : 8;
+    if (/[NS]/.test(payload[offset + 8]) && /[EW]/.test(payload[offset + 18])) {
+      table = payload[offset + 9];
+      code = payload[offset + 19];
+    } else if (payload.length >= offset + 11) {
+      table = payload[offset + 1];
+      code = payload[offset + 10];
+    }
+  } else if (payload[0] === ';' && payload.length >= 38) {
+    table = payload[26];
+    code = payload[36];
+  }
+  const overlay = /^[0-9A-Za-z]$/.test(table) ? table : '';
+  return { table: table || '/', code: code || '>', overlay };
+}
+
+function aprsSymbolView(station) {
+  const symbol = aprsSymbol(station.raw, station.symbol);
+  const table = symbol.table === '\\' || symbol.overlay ? '\\' : '/';
+  const key = `${table}${symbol.code}`;
+  const base = APRS_SYMBOLS[key] || APRS_SYMBOLS[`/${symbol.code}`] || ['APRS station', symbol.code || '•'];
+  return { key, label: base[0], glyph: base[1], overlay: symbol.overlay };
+}
+
 function renderPackets() {
   $('packet-feed').innerHTML = state.packets.map(item => `<div class="feed-row"><header><span>${esc(item.type)}</span><span>${new Date(item.ts).toLocaleTimeString()}</span></header><code>${esc(item.packet)}</code></div>`).join('') || '<div class="feed-row">Waiting for APRSNET packets...</div>';
 }
@@ -634,6 +704,12 @@ function fitMapToStations() {
 }
 
 function drawMap() {
+  if (state.map.frame) cancelAnimationFrame(state.map.frame);
+  state.map.frame = requestAnimationFrame(renderMap);
+}
+
+function renderMap() {
+  state.map.frame = null;
   const map = $('map');
   const tiles = $('map-tiles');
   const markers = $('map-markers');
@@ -642,31 +718,75 @@ function drawMap() {
   const center = project(state.map.lat, state.map.lon, zoom);
   const left = center.x - map.clientWidth / 2;
   const top = center.y - map.clientHeight / 2;
-  const minX = Math.floor(left / 256);
-  const maxX = Math.floor((left + map.clientWidth) / 256);
-  const minY = Math.floor(top / 256);
-  const maxY = Math.floor((top + map.clientHeight) / 256);
+  const minX = Math.floor(left / 256) - 1;
+  const maxX = Math.floor((left + map.clientWidth) / 256) + 1;
+  const minY = Math.floor(top / 256) - 1;
+  const maxY = Math.floor((top + map.clientHeight) / 256) + 1;
   const maxTile = 2 ** zoom;
-  let tileHtml = '';
+  const activeTiles = new Set();
   for (let x = minX; x <= maxX; x++) {
     for (let y = minY; y <= maxY; y++) {
       if (y < 0 || y >= maxTile) continue;
       const wrappedX = ((x % maxTile) + maxTile) % maxTile;
-      tileHtml += `<img alt="" src="https://tile.openstreetmap.org/${zoom}/${wrappedX}/${y}.png" style="left:${Math.round(x * 256 - left)}px;top:${Math.round(y * 256 - top)}px">`;
+      const key = `${zoom}:${wrappedX}:${y}:${x}`;
+      activeTiles.add(key);
+      let tile = state.map.tileNodes.get(key);
+      if (!tile) {
+        tile = document.createElement('img');
+        tile.alt = '';
+        tile.draggable = false;
+        tile.dataset.tile = key;
+        tile.src = `https://tile.openstreetmap.org/${zoom}/${wrappedX}/${y}.png`;
+        tiles.appendChild(tile);
+        state.map.tileNodes.set(key, tile);
+      }
+      tile.style.transform = `translate(${Math.round(x * 256 - left)}px, ${Math.round(y * 256 - top)}px)`;
     }
   }
-  tiles.innerHTML = tileHtml;
+  state.map.tileNodes.forEach((tile, key) => {
+    if (!activeTiles.has(key)) {
+      tile.remove();
+      state.map.tileNodes.delete(key);
+    }
+  });
 
   const watch = new Set(clean($('watchlist').value).toUpperCase().split(/[,\s]+/).filter(Boolean));
-  markers.innerHTML = [...state.stations.values()].filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon)).map(station => {
+  const activeMarkers = new Set();
+  for (const station of [...state.stations.values()].filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))) {
     const point = project(station.lat, station.lon, zoom);
     const x = Math.round(point.x - left);
     const y = Math.round(point.y - top);
-    if (x < -60 || y < -30 || x > map.clientWidth + 80 || y > map.clientHeight + 30) return '';
+    const key = `station:${station.call}`;
+    activeMarkers.add(key);
+    let marker = state.map.markerNodes.get(key);
+    if (!marker) {
+      marker = document.createElement('button');
+      marker.className = 'map-marker';
+      marker.dataset.marker = key;
+      marker.dataset.call = station.call;
+      marker.type = 'button';
+      marker.innerHTML = '<span class="map-symbol"></span><span class="map-overlay"></span><span class="map-label"></span>';
+      markers.appendChild(marker);
+      state.map.markerNodes.set(key, marker);
+    }
+    const hidden = x < -90 || y < -50 || x > map.clientWidth + 120 || y > map.clientHeight + 60;
+    marker.hidden = hidden;
+    if (hidden) continue;
     const isWx = !!parseWXPacket(station.raw);
-    const classes = ['map-marker', station.type === 'object' ? 'object' : '', watch.has(station.call.toUpperCase()) ? 'watch' : '', isWx ? 'wx' : ''].filter(Boolean).join(' ');
-    return `<button class="${classes}" data-call="${esc(station.call)}" title="${esc(station.call)}" style="left:${x}px;top:${y}px"><span class="map-label">${esc(station.call)}</span></button>`;
-  }).join('');
+    const view = aprsSymbolView(station);
+    marker.className = ['map-marker', station.type === 'object' ? 'object' : '', watch.has(station.call.toUpperCase()) ? 'watch' : '', isWx ? 'wx' : ''].filter(Boolean).join(' ');
+    marker.title = `${station.call} - ${view.label} (${view.key})`;
+    marker.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+    marker.querySelector('.map-symbol').textContent = view.glyph;
+    marker.querySelector('.map-overlay').textContent = view.overlay;
+    marker.querySelector('.map-label').textContent = station.call;
+  }
+  state.map.markerNodes.forEach((marker, key) => {
+    if (!activeMarkers.has(key)) {
+      marker.remove();
+      state.map.markerNodes.delete(key);
+    }
+  });
 }
 
 function transmit(builder) {
@@ -780,6 +900,11 @@ async function init() {
   document.querySelectorAll('.nav').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
   document.querySelectorAll('input, textarea').forEach(node => node.addEventListener('input', () => { updatePreviews(); drawMap(); }));
   document.addEventListener('click', event => {
+    if (state.map.suppressClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const conv = event.target.closest('[data-conversation]');
     if (conv) {
       state.selectedConversation = conv.dataset.conversation;
@@ -791,7 +916,9 @@ async function init() {
     const button = event.target.closest('.call-button[data-call], .map-marker[data-call]');
     if (!button) return;
     $('message-to').value = button.dataset.call;
+    state.selectedConversation = button.dataset.call;
     switchView('messages');
+    renderMessages();
     updatePreviews();
   });
 
@@ -814,9 +941,10 @@ async function init() {
     drawMap();
   }, { passive: false });
   $('map').addEventListener('mousedown', event => {
-    if (event.target.closest('button, input, textarea')) return;
+    if (event.target.closest('.map-controls, input, textarea')) return;
     const center = project(state.map.lat, state.map.lon, state.map.zoom);
     state.map.dragging = true;
+    state.map.dragMoved = false;
     state.map.dragStart = { x: event.clientX, y: event.clientY };
     state.map.dragCenter = center;
     $('map').classList.add('dragging');
@@ -825,10 +953,15 @@ async function init() {
     if (!state.map.dragging) return;
     const dx = event.clientX - state.map.dragStart.x;
     const dy = event.clientY - state.map.dragStart.y;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) state.map.dragMoved = true;
     setMapCenterFromPixels(state.map.dragCenter.x - dx, state.map.dragCenter.y - dy, state.map.zoom);
     drawMap();
   });
   window.addEventListener('mouseup', () => {
+    if (state.map.dragging && state.map.dragMoved) {
+      state.map.suppressClick = true;
+      setTimeout(() => { state.map.suppressClick = false; }, 0);
+    }
     state.map.dragging = false;
     $('map').classList.remove('dragging');
   });

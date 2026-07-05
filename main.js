@@ -5,7 +5,7 @@ const https = require('https');
 
 const SERVER_URL = 'https://www.aprsnet.uk';
 const WS_URL = 'wss://www.aprsnet.uk/ws';
-const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+app.setAppUserModelId('uk.aprsnet.desktop');
 
 const defaultSettings = {
   callsign: '',
@@ -26,11 +26,13 @@ const defaultSettings = {
 
 let mainWindow;
 let tray;
-let settings = loadSettings();
+let settingsPath;
+let settings = Object.assign({}, defaultSettings);
 let lastKnownPosition = null;
 
 function loadSettings() {
   try {
+    if (!settingsPath) return Object.assign({}, defaultSettings);
     if (fs.existsSync(settingsPath)) {
       return Object.assign({}, defaultSettings, JSON.parse(fs.readFileSync(settingsPath, 'utf8')));
     }
@@ -219,6 +221,8 @@ if (!gotLock) {
 } else {
   app.on('second-instance', showMainWindow);
   app.whenReady().then(() => {
+    settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    settings = loadSettings();
     if (process.argv.includes('--hidden')) settings.startMinimized = true;
     createWindow();
     createTray();
