@@ -1,4 +1,4 @@
-name: Build APRS Client
+name: Build APRSNET Desktop
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
       - name: Upload DEB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aprs-client-linux-deb
+          name: aprsnet-desktop-linux-deb
           path: dist/*.deb
           if-no-files-found: warn
 
@@ -55,7 +55,7 @@ jobs:
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aprs-client-windows-exe
+          name: aprsnet-desktop-windows-exe
           path: dist/*.exe
           if-no-files-found: warn
 
@@ -69,13 +69,13 @@ jobs:
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: aprs-client-linux-deb
+          name: aprsnet-desktop-linux-deb
           path: dist/
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: aprs-client-windows-exe
+          name: aprsnet-desktop-windows-exe
           path: dist/
 
       - name: Create Release

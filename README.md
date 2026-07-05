@@ -1,176 +1,85 @@
-# APRS Client
+# APRSNET Desktop
 
-Cross-platform desktop client for [aprsnet.uk](https://www.aprsnet.uk) - Windows 10/11 and Debian/Ubuntu Linux.
+Installable Windows and Debian desktop client for APRSNET.UK.
 
-Built with Electron as an installable native desktop shell. The client loads a local APRSNET renderer rather than wrapping the website, while using APRSNET REST and WebSocket APIs for live traffic, messaging, station data, weather, analytics, and transmit workflows.
+This repository is now the native APRSNET desktop application. It is not a browser wrapper, not a hosted web view, and not an AI application. The app runs a local Electron renderer and uses APRSNET as the data connection to the APRS networks through the APRSNET REST API and WebSocket feed.
 
-[![Release](https://img.shields.io/github/v/release/2E0LXY/APRS-Client)](https://github.com/2E0LXY/APRS-Client/releases)
-[![Licence: GPL v3](https://img.shields.io/badge/Licence-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-![APRS Client desktop](docs/screenshot-desktop.svg)
+## Current Scope
 
----
+- Native desktop cockpit with Dashboard, Map, Messages, Transmit, Weather, Analytics and Settings views
+- Direct APRSNET WebSocket connection for live packets, objects, alerts and authenticated transmit
+- Main-process REST proxy restricted to APRSNET `/api/*` routes
+- Station table and tactical canvas map from APRSNET GeoJSON/API data
+- APRS message, position beacon, object and raw packet builders with previews before transmit
+- APRSNET member login token storage for member-backed API calls
+- Desktop notifications, tray menu, single-instance behaviour and launch-on-startup support
+- Windows NSIS installer and Debian `.deb` packaging through Electron Builder
 
-## Also available on
+## Intended End State
 
-![APRS Net - all platforms](docs/platforms.svg)
+The goal is a direct replacement for the previous APRS-Client browser-style app, with the website's APRSNET features rebuilt as native desktop workflows:
 
-| Platform | Repository | Download |
-|----------|------------|----------|
-| **Android** | [2E0LXY/APRS-Android](https://github.com/2E0LXY/APRS-Android) | [APK](https://github.com/2E0LXY/APRS-Android/releases) |
-| **iOS** | [2E0LXY/APRS-iOS](https://github.com/2E0LXY/APRS-iOS) | [Releases](https://github.com/2E0LXY/APRS-iOS/releases) |
-| **Self-host the server** | [2E0LXY/Advanced-APRS-Go-server](https://github.com/2E0LXY/Advanced-APRS-Go-server) | [Install guide](https://github.com/2E0LXY/Advanced-APRS-Go-server#installation-debian-12) |
+- Full map controls, filters, station history, object handling, weather layers and replay
+- Full APRS messaging centre with inbox, conversation threading and message traffic log
+- Weather, Ecowitt, analytics, propagation, satellite/pass and utility tools
+- Admin/member workflows where the APRSNET API permits them
+- Installer releases for Windows and Debian from one shared codebase
 
----
+## Repository Layout
 
-## Download
+```text
+main.js             Electron main process, tray, settings, API proxy, notifications
+preload.js          Safe bridge exposed to the local renderer
+renderer/
+  index.html        Native desktop shell
+  styles.css        Desktop UI styling
+  app.js            APRSNET API/WebSocket client and UI logic
+assets/             Application icons
+.github/workflows/  Windows and Linux build/release workflow
+```
 
-See [Releases](https://github.com/2E0LXY/APRS-Client/releases) for:
-- `APRS.Client.Setup.x.x.x.exe` - Windows 10/11 NSIS installer
-- `aprs-client_x.x.x_amd64.deb` - Debian/Ubuntu package
+## Development
 
----
+Requirements:
 
-## Features
-
-### Native APRSNET Desktop Dashboard
-
-The app runs its own local renderer and connects directly to APRSNET. This is not an AI app and not a browser wrapper.
-
-Current desktop foundation:
-
-- Dashboard with live APRSNET status, packet feed, active stations, and recent messages
-- Tactical canvas map powered by APRSNET GeoJSON/API data
-- Direct APRSNET WebSocket feed for live packets, objects, alerts, and message replay
-- REST API proxy in the Electron main process for `/api/*` calls
-- Authenticated APRS message, position beacon, object, and raw packet transmit workflows
-- Weather, analytics, member login, GPS/manual position, and settings panels
-
-Planned replacement scope:
-
-- Full feature parity with the APRSNET website map, messaging, weather, analytics, admin, sync, and utility tools
-- Desktop-native navigation, keyboard shortcuts, tray actions, and notifications
-- Windows installer and Debian package builds from the same codebase
-
-### Desktop Integration
-
-The app provides native desktop behaviour:
-
-- **Native dashboard shell** - local renderer with dashboard, tactical map, messages, beacon/object tools, weather, analytics, and settings views
-- **APRSNET API proxy** - the Electron main process brokers REST API calls to APRSNET without embedding the website
-- **Live WebSocket feed** - the renderer connects directly to APRSNET `/ws` for packets, objects, alerts, and message replay
-- **Authenticated transmit tools** - APRS message, position beacon, object, and raw packet workflows preview packets before sending
-- **Native OS notifications** - incoming APRS messages can trigger Windows/Linux system notifications via the Electron main process
-- **Auto member login** - signs in to the APRSNET member API using saved credentials for member-backed features
-- **GPS/manual position support** - uses OS/browser geolocation or configured manual coordinates for beacon workflows
-
-### System Integration
-
-- System tray icon with context menu: Open, Reload, Disconnect, Quit
-- Minimise to tray on window close (configurable)
-- Launch on Windows startup with optional start-minimised mode
-- Single-instance lock - re-launching focuses the existing window rather than opening a second
-
----
-
-## First Run
-
-1. Launch the app
-2. Enter callsign and APRS-IS passcode
-3. Enter your aprsnet.uk member account credentials (for auto-login, filter sync, and direct messaging)
-4. Tick **Remember me and connect automatically** to skip this screen on future launches
-5. Click **Connect to APRS Net**
-
-The native desktop dashboard opens and connects to APRSNET.
-
----
-
-## Settings
-
-Click Settings in the toolbar to open the Desktop Settings dialog:
-
-| Setting | Description |
-|---------|-------------|
-| Desktop notifications | Enable / disable OS message notifications |
-| Minimise to tray | Window close minimises rather than quits |
-| Launch on startup | Register with OS startup items |
-| Auto-connect | Skip the connect screen on launch |
-| Theme | Dark / Light - applied to the native desktop interface |
-
-Full settings (callsign, passcode, member account, GPS source, appearance) are on the connect screen.  
-All settings are stored in `settings.json` in the Electron `userData` folder.
-
----
-
-## Cross-device Sync
-
-The desktop client participates in the same cross-device sync as Android and iOS:
-
-| What syncs | Trigger | Direction |
-|------------|---------|-----------|
-| Map filter preferences | Login (auto) | Server -> Desktop |
-| Map filter preferences | Any checkbox change | Desktop -> Server -> All devices |
-| Message history | Login (auto) | Server -> Desktop (via `loadMemberMessages()`) |
-| New messages | Real-time | All devices -> Server -> Desktop (WS `rx` packet) |
-| Settings changes | Any save | Any device -> Server -> Desktop (`member_sync` WS push) |
-| Ecowitt WX config | Settings save | Desktop -> Server -> All devices |
-
----
-
-## Building from Source
-
-### Prerequisites
-- Node.js 18+
+- Node.js 20+
 - npm
 
-### Install and build
+Run locally:
+
 ```bash
-git clone https://github.com/2E0LXY/APRS-Client
-cd APRS-Client
 npm install
-
-# Run in development
 npm start
+```
 
-# Build Windows installer (requires Windows or Wine)
+Build installers:
+
+```bash
 npm run build:win -- --publish never
-
-# Build Linux DEB
 npm run build:linux -- --publish never
 ```
 
-Every push to `main` builds installers; pushing a `v*` tag publishes them as a Release.
+## Releases
 
----
+The GitHub Actions workflow builds on pushes to `main` and on tags matching `v*`.
 
-## Architecture
+To publish a release:
 
-```
-main.js              - Electron main: BrowserWindow, tray, IPC, APRSNET API proxy, GPS store,
-                       single-instance lock, launch-on-startup
-preload.js           - contextBridge: exposes aprsClient API to local renderer
-renderer/
-  connect.html       - Connection / settings screen (callsign, passcode, member, GPS)
-  native.html        - Local native APRSNET dashboard shell
-  native.css         - Desktop dashboard styling
-  native-app.js      - REST/WebSocket client, live station state, TX tools
-assets/
-  icon.png / icon.ico / icon.svg
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
-The desktop client does not inject code into the APRSNET website. The renderer is local and talks to APRSNET through REST and WebSocket APIs.
+The tag build creates a GitHub Release and uploads the Windows installer and Debian package.
 
----
+## Security Model
 
-## Changelog
-
-| Version | Changes |
-|---------|---------|
-| v1.3.2 | Removes the legacy website overlay path; native renderer is the only client surface |
-| v1.3.1 | Native APRSNET desktop foundation: local renderer, API proxy, WebSocket feed, map, messaging, weather, analytics, and TX tools |
-| v1.0.x | Initial Electron desktop shell, system tray, native notifications, connect screen |
-
----
+- The app loads only local renderer files.
+- The renderer cannot use Node integration.
+- External links are opened through validated `http`/`https` URLs only.
+- REST access from the renderer is restricted to APRSNET `/api/*` paths.
+- Transmit actions require WebSocket authentication and user confirmation.
 
 ## Licence
 
-GNU General Public Licence v3 - (c) 2026 Daren Loxley 2E0LXY
+GNU General Public Licence v3, copyright 2026 Daren Loxley 2E0LXY.

@@ -1,7 +1,7 @@
 {
-  "name": "aprs-client",
+  "name": "aprsnet-desktop",
   "version": "1.3.2",
-  "description": "Native APRSNET desktop client for Windows and Debian",
+  "description": "Native APRSNET.UK desktop client for Windows and Debian",
   "main": "main.js",
   "author": "Daren Loxley 2E0LXY",
   "license": "GPL-3.0",
@@ -11,8 +11,8 @@
     "build:linux": "electron-builder --linux deb --x64"
   },
   "build": {
-    "appId": "uk.aprsnet.client",
-    "productName": "APRS Client",
+    "appId": "uk.aprsnet.desktop",
+    "productName": "APRSNET Desktop",
     "copyright": "Copyright 2026 Daren Loxley 2E0LXY",
     "files": [
       "main.js",
@@ -43,11 +43,11 @@
       "icon": "assets/icon.png",
       "category": "HamRadio",
       "synopsis": "Native APRSNET desktop client",
-      "description": "Installable APRSNET desktop client with local renderer, live WebSocket feed, REST API integration, map, station list, messaging, weather, analytics and transmit tools.",
+      "description": "Installable APRSNET desktop client with a local renderer, live WebSocket feed, REST API integration, map, station list, messaging, weather, analytics and transmit tools.",
       "maintainer": "Daren Loxley <2e0lxy@amateur.radio>",
       "desktop": {
-        "Name": "APRS Client",
-        "Comment": "Advanced APRS Desktop Client",
+        "Name": "APRSNET Desktop",
+        "Comment": "Native APRSNET desktop client",
         "Categories": "HamRadio;Network;"
       }
     },
@@ -57,7 +57,7 @@
       "installerIcon": "assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "APRS Client"
+      "shortcutName": "APRSNET Desktop"
     }
   },
   "devDependencies": {
