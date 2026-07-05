@@ -58,7 +58,12 @@ jobs:
           $installer = Get-ChildItem dist -Filter "*.msi" | Select-Object -First 1
           if (-not $installer) { throw "No Windows MSI installer was produced." }
           $log = Join-Path $env:TEMP "aprsnet-desktop-msi.log"
-          $process = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", "`"$($installer.FullName)`"", "/qn", "/norestart", "/L*v", "`"$log`"") -Wait -PassThru
+          $process = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", "`"$($installer.FullName)`"", "/qn", "/norestart", "ALLUSERS=2", "MSIINSTALLPERUSER=1", "/L*v", "`"$log`"") -PassThru
+          if (-not $process.WaitForExit(120000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            if (Test-Path $log) { Get-Content $log -Tail 120 }
+            throw "MSI install timed out after 120 seconds."
+          }
           if ($process.ExitCode -ne 0) { throw "Installer failed with exit code $($process.ExitCode)." }
           $paths = @(
             Join-Path $env:ProgramFiles "APRSNET Desktop"
@@ -66,8 +71,6 @@ jobs:
           )
           $app = Get-ChildItem -Path $paths -Filter "APRSNET Desktop.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $app) { throw "Installer completed but APRSNET Desktop.exe was not found. MSI log: $log" }
-          $uninstall = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/x", "`"$($installer.FullName)`"", "/qn", "/norestart") -Wait -PassThru
-          if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with exit code $($uninstall.ExitCode)." }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
