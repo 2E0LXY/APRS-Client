@@ -117,7 +117,7 @@ input::placeholder { color: #475569; }
   </label>
 
   <button class="connect-btn" id="connectBtn" onclick="doConnect()">
-    Connect to APRS Net
+    Launch Native APRS Client
   </button>
 
   <div class="status" id="status"></div>
@@ -177,7 +177,7 @@ async function doConnect() {
     var probe = await window.aprsClient.probeServer();
     if (probe && probe.ok) {
       showStatus('Server online' + (probe.data && probe.data.version
-                 ? ' (v' + probe.data.version + ')' : '') + ' - opening...', 'ok');
+                 ? ' (v' + probe.data.version + ')' : '') + ' - launching native client...', 'ok');
     } else {
       showStatus('Server check failed - opening anyway', 'error');
     }

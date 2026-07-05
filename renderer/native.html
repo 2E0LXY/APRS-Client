@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>APRS Client</title>
+  <link rel="stylesheet" href="native.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="../assets/icon.png" alt="">
+        <div>
+          <strong>APRS Client</strong>
+          <span>Native APRSNET desktop</span>
+        </div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">Dashboard</button>
+        <button class="nav-item" data-view="map">Tactical Map</button>
+        <button class="nav-item" data-view="messages">Messages</button>
+        <button class="nav-item" data-view="beacon">Beacon / Objects</button>
+        <button class="nav-item" data-view="weather">Weather</button>
+        <button class="nav-item" data-view="analytics">Analytics</button>
+        <button class="nav-item" data-view="settings">Settings</button>
+      </nav>
+      <button id="disconnect" class="ghost">Disconnect</button>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <h1 id="view-title">Dashboard</h1>
+          <p id="view-subtitle">Live APRSNET status, stations, packets and alerts.</p>
+        </div>
+        <div class="status-pills">
+          <span id="ws-pill" class="pill bad">WS offline</span>
+          <span id="auth-pill" class="pill warn">RX only</span>
+          <span id="upstream-pill" class="pill warn">Upstream unknown</span>
+        </div>
+      </header>
+
+      <section class="view active" id="view-dashboard">
+        <div class="metric-grid">
+          <article><span>Packets RX</span><strong id="pkts-rx">-</strong><em id="rate">0/min</em></article>
+          <article><span>Stations</span><strong id="station-count">-</strong><em id="object-count">0 objects</em></article>
+          <article><span>Clients</span><strong id="client-count">-</strong><em id="tcp-count">0 TCP</em></article>
+          <article><span>Uptime</span><strong id="uptime">-</strong><em id="ring">ring -</em></article>
+        </div>
+        <div class="split">
+          <section class="panel">
+            <div class="panel-head"><h2>Live Packet Feed</h2><button id="clear-feed">Clear</button></div>
+            <div id="packet-feed" class="feed"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>Fresh Stations</h2><button id="refresh">Refresh</button></div>
+            <table><thead><tr><th>Call</th><th>Age</th><th>Position</th><th>Path</th></tr></thead><tbody id="station-table"></tbody></table>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-map">
+        <section class="panel full">
+          <div class="panel-head">
+            <h2>Tactical Map</h2>
+            <div class="tools"><input id="watchlist" placeholder="Watchlist callsigns"><button id="fit-map">Fit</button></div>
+          </div>
+          <canvas id="map-canvas" width="1200" height="620"></canvas>
+        </section>
+      </section>
+
+      <section class="view" id="view-messages">
+        <div class="split">
+          <section class="panel">
+            <h2>Recent APRS Messages</h2>
+            <div id="message-feed" class="feed"></div>
+          </section>
+          <section class="panel form-panel">
+            <h2>Send Message</h2>
+            <label>To callsign<input id="msg-to" maxlength="9"></label>
+            <label>Text<textarea id="msg-text" maxlength="67"></textarea></label>
+            <label>Message ID<input id="msg-id" value="01" maxlength="5"></label>
+            <pre id="message-preview" class="preview"></pre>
+            <button id="send-message" class="primary">Send APRS Message</button>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-beacon">
+        <div class="split">
+          <section class="panel form-panel">
+            <h2>Position Beacon</h2>
+            <div class="row"><label>Latitude<input id="beacon-lat"></label><label>Longitude<input id="beacon-lon"></label><label>SSID<input id="beacon-ssid" value="9"></label></div>
+            <label>Comment<input id="beacon-comment" value="APRS Client desktop"></label>
+            <div class="tools"><button id="use-position">Use configured position</button><button id="send-beacon" class="primary">Send Beacon</button></div>
+            <pre id="beacon-preview" class="preview"></pre>
+          </section>
+          <section class="panel form-panel">
+            <h2>Object / Raw Packet</h2>
+            <div class="row"><label>Object name<input id="object-name" maxlength="9"></label><label>Latitude<input id="object-lat"></label><label>Longitude<input id="object-lon"></label></div>
+            <label>Comment<input id="object-comment"></label>
+            <button id="send-object" class="primary">Send Object</button>
+            <label>Raw packet<textarea id="raw-packet"></textarea></label>
+            <button id="send-raw" class="danger">Send Raw Packet</button>
+            <pre id="object-preview" class="preview"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-weather">
+        <section class="panel full">
+          <div class="panel-head"><h2>Weather and Warnings</h2><button id="refresh-weather">Refresh</button></div>
+          <div id="weather-grid" class="card-grid"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-analytics">
+        <section class="panel full">
+          <div class="panel-head"><h2>Propagation Analytics</h2><button id="refresh-analytics">Refresh</button></div>
+          <div id="analytics-grid" class="card-grid"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-settings">
+        <section class="panel form-panel settings-panel">
+          <h2>Connection Settings</h2>
+          <div class="row"><label>Callsign<input id="set-callsign"></label><label>Passcode<input id="set-passcode" type="password"></label></div>
+          <div class="row"><label>Member user<input id="set-member-user"></label><label>Member password<input id="set-member-pass" type="password"></label></div>
+          <div class="row"><label>Manual lat<input id="set-lat"></label><label>Manual lon<input id="set-lon"></label></div>
+          <label class="check"><input type="checkbox" id="set-notifications"> Desktop notifications</label>
+          <label class="check"><input type="checkbox" id="set-tray"> Minimise to tray</label>
+          <button id="save-settings" class="primary">Save Settings</button>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="native-app.js"></script>
+</body>
+</html>

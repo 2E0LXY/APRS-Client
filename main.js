@@ -17,6 +17,7 @@ const defaultSettings = {
   passcode:        '',
   memberUser:      '',          // website member account username
   memberPass:      '',          // website member account password
+  memberToken:     '',          // APRSNET member API session token
   autoConnect:     true,
   autoMemberLogin: true,        // auto sign-in to the website member account
   minimizeToTray:  true,
@@ -63,6 +64,16 @@ let settings = loadSettings();
 let isOnConnectScreen = true;
 let lastKnownPosition = null;   // { lat, lon, accuracy, ts }
 
+function openSafeExternal(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl));
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return shell.openExternal(parsed.toString());
+    }
+  } catch (e) {}
+  return false;
+}
+
 // ─── Main window ──────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -75,7 +86,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false,
+      webSecurity: true,
       // geolocation needs this; Electron grants it via the permission handler below
     },
     show: false
@@ -97,10 +108,11 @@ function createWindow() {
   // Inject the client overlay into every server page after it loads
   mainWindow.webContents.on('did-finish-load', () => {
     const url = mainWindow.webContents.getURL();
-    const isLocalConnect = url.startsWith('file://') && url.includes('connect.html');
+    const isLocalPage = url.startsWith('file://');
+    const isLocalConnect = isLocalPage && url.includes('connect.html');
     isOnConnectScreen = isLocalConnect;
 
-    if (!isLocalConnect) {
+    if (!isLocalPage) {
       const overlayPath = path.join(__dirname, 'renderer', 'client-overlay.js');
       if (fs.existsSync(overlayPath)) {
         const code = fs.readFileSync(overlayPath, 'utf8');
@@ -129,8 +141,15 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openSafeExternal(url);
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('file://')) {
+      event.preventDefault();
+      openSafeExternal(url);
+    }
   });
 }
 
@@ -154,7 +173,7 @@ function updateTrayMenu() {
     { label: 'Reload', click: () => { mainWindow && mainWindow.webContents.reload(); } },
     { label: 'Disconnect', click: () => goToConnectScreen() },
     { type: 'separator' },
-    { label: 'Support Group', click: () => shell.openExternal('https://groups.google.com/g/aprsnetuk') },
+    { label: 'Support Group', click: () => openSafeExternal('https://groups.google.com/g/aprsnetuk') },
     { type: 'separator' },
     { label: 'Quit APRS Client', click: () => { app.isQuitting = true; app.quit(); } }
   ]));
@@ -194,7 +213,7 @@ ipcMain.handle('save-settings', (e, s) => {
 ipcMain.handle('get-server', () => ({ url: SERVER_URL, ws: WS_URL }));
 
 ipcMain.handle('connect-to-server', () => {
-  if (mainWindow) mainWindow.loadURL(SERVER_URL);
+  if (mainWindow) mainWindow.loadFile(path.join(__dirname, 'renderer', 'native.html'));
 });
 
 ipcMain.handle('go-back', () => goToConnectScreen());
@@ -205,8 +224,38 @@ ipcMain.handle('show-notification', (e, title, body) => {
 });
 
 ipcMain.handle('get-version', () => app.getVersion());
-ipcMain.handle('open-external', (e, url) => shell.openExternal(url));
+ipcMain.handle('open-external', (e, url) => {
+  return openSafeExternal(url);
+});
 ipcMain.handle('reload-window', () => mainWindow && mainWindow.webContents.reload());
+
+ipcMain.handle('api-request', (e, req = {}) => new Promise((resolve) => {
+  const method = String(req.method || 'GET').toUpperCase();
+  const apiPath = String(req.path || '/');
+  if (!apiPath.startsWith('/api/')) {
+    resolve({ ok: false, status: 400, error: 'Only /api/ paths are allowed' });
+    return;
+  }
+  const body = req.body === undefined || req.body === null ? null : JSON.stringify(req.body);
+  const headers = Object.assign({ 'Accept': 'application/json' }, req.headers || {});
+  if (body) headers['Content-Type'] = 'application/json';
+  if (settings.memberToken && !headers['X-Member-Token']) headers['X-Member-Token'] = settings.memberToken;
+
+  const request = https.request(SERVER_URL + apiPath, { method, headers, timeout: 10000 }, (res) => {
+    let text = '';
+    res.setEncoding('utf8');
+    res.on('data', d => text += d);
+    res.on('end', () => {
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+      resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, data });
+    });
+  });
+  request.on('error', err => resolve({ ok: false, status: 0, error: err.message }));
+  request.on('timeout', () => { request.destroy(); resolve({ ok: false, status: 0, error: 'timeout' }); });
+  if (body) request.write(body);
+  request.end();
+}));
 
 // Position: the overlay asks the main process for the latest position.
 // In GPS mode it returns whatever the renderer last reported; in manual mode

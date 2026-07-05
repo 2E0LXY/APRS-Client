@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('aprsClient', {
   connectToServer:  ()        => ipcRenderer.invoke('connect-to-server'),
   probeServer:      ()        => ipcRenderer.invoke('probe-server'),
   goBack:           ()        => ipcRenderer.invoke('go-back'),
+  apiRequest:       (req)     => ipcRenderer.invoke('api-request', req),
 
   // Desktop integration
   showNotification: (t, b)    => ipcRenderer.invoke('show-notification', t, b),
@@ -24,7 +25,11 @@ contextBridge.exposeInMainWorld('aprsClient', {
   reportPosition:   (pos)     => ipcRenderer.invoke('report-position', pos),
 
   // Events
-  onSettings:       (cb)      => ipcRenderer.on('settings', (e, s) => cb(s)),
+  onSettings:       (cb)      => {
+    const listener = (e, s) => cb(s);
+    ipcRenderer.on('settings', listener);
+    return () => ipcRenderer.removeListener('settings', listener);
+  },
 
   platform:         process.platform
 });
