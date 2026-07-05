@@ -20,6 +20,42 @@
     <button class="nav" data-view="weather">Weather</button>
     <button class="nav" data-view="analytics">Analytics</button>
     <button class="nav" data-view="settings">Settings</button>
+    <details class="rail-filters" open>
+      <summary>
+        <span>Map Filters</span>
+        <em id="filter-sync-state">local</em>
+      </summary>
+      <div id="map-filter-grid" class="map-filter-list">
+        <div class="filter-group">
+          <strong>Station Types</strong>
+          <label><input type="checkbox" data-pref="show_aprs"> <span class="dot ham"></span>Ham APRS</label>
+          <label><input type="checkbox" data-pref="show_cwop"> <span class="dot wx"></span>CWOP Weather</label>
+          <label><input type="checkbox" data-pref="show_ogn"> <span class="dot ogn"></span>OGN Gliders</label>
+          <label><input type="checkbox" data-pref="show_objects"> <span class="dot object"></span>Objects/Items</label>
+          <label><input type="checkbox" data-pref="show_lora_aprsis"> <span class="dot lora"></span>LoRa via APRS-IS</label>
+        </div>
+        <div class="filter-group">
+          <strong>Display</strong>
+          <label><input type="checkbox" data-pref="hide_static"> Hide static &gt;5 min</label>
+          <label><input type="checkbox" data-pref="ghost_old"> Ghost stale stations</label>
+          <label><input type="checkbox" data-pref="cluster_enable"> Cluster markers</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_phg"> PHG circles</label>
+          <label class="unsupported"><input type="checkbox" data-pref="auto_fit"> Auto-fit zoom</label>
+          <label class="unsupported"><input type="checkbox" data-pref="prop_lines"> Range lines to you</label>
+          <label class="unsupported"><input type="checkbox" data-pref="wx_radar"> Weather radar</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_all_connections"> All P2P connections</label>
+        </div>
+        <div class="filter-group">
+          <strong>Hide / Overlays</strong>
+          <label><input type="checkbox" data-pref="drop_pistar"> Digital voice beacons</label>
+          <label><input type="checkbox" data-pref="drop_dstar"> D-STAR routes</label>
+          <label><input type="checkbox" data-pref="drop_apdesk"> APDESK status</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_seamarks"> Sea marks</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_ships"> Live ships AIS</label>
+          <label class="unsupported"><input type="checkbox" data-pref="show_lora"> LoRa network</label>
+        </div>
+      </div>
+    </details>
     <div class="rail-foot">
       <span id="app-version">v-</span>
       <button id="open-site">APRSNET.uk</button>
@@ -70,30 +106,6 @@
             <button id="fit-map">Fit</button>
           </div>
         </div>
-        <details class="map-filter-drawer" open>
-          <summary>Station Filters <span id="filter-sync-state">local</span></summary>
-          <div id="map-filter-grid" class="map-filter-grid">
-            <label><input type="checkbox" data-pref="show_aprs"> <span class="dot ham"></span>Ham APRS</label>
-            <label><input type="checkbox" data-pref="show_cwop"> <span class="dot wx"></span>CWOP Weather</label>
-            <label><input type="checkbox" data-pref="show_ogn"> <span class="dot ogn"></span>OGN Gliders</label>
-            <label><input type="checkbox" data-pref="show_objects"> <span class="dot object"></span>Objects/Items</label>
-            <label><input type="checkbox" data-pref="hide_static"> Hide Static (&gt;5min)</label>
-            <label><input type="checkbox" data-pref="ghost_old"> Ghost Stale Stations</label>
-            <label><input type="checkbox" data-pref="cluster_enable"> Cluster Markers</label>
-            <label><input type="checkbox" data-pref="show_lora_aprsis"> <span class="dot lora"></span>LoRa (via APRS-IS)</label>
-            <label><input type="checkbox" data-pref="drop_pistar"> Hide digital-voice gateway beacons</label>
-            <label><input type="checkbox" data-pref="drop_dstar"> Hide D-STAR routes</label>
-            <label><input type="checkbox" data-pref="drop_apdesk"> Hide APDESK status</label>
-            <label class="unsupported"><input type="checkbox" data-pref="show_phg"> PHG Circles</label>
-            <label class="unsupported"><input type="checkbox" data-pref="auto_fit"> Auto-Fit Zoom</label>
-            <label class="unsupported"><input type="checkbox" data-pref="prop_lines"> Range Lines (to you)</label>
-            <label class="unsupported"><input type="checkbox" data-pref="wx_radar"> Weather Radar</label>
-            <label class="unsupported"><input type="checkbox" data-pref="show_all_connections"> Show all P2P connections</label>
-            <label class="unsupported"><input type="checkbox" data-pref="show_seamarks"> Sea Marks (OpenSeaMap)</label>
-            <label class="unsupported"><input type="checkbox" data-pref="show_ships"> Live Ships (AIS)</label>
-            <label class="unsupported"><input type="checkbox" data-pref="show_lora"> LoRa Network</label>
-          </div>
-        </details>
         <div id="map" class="osm-map">
           <div id="map-tiles" class="map-tiles"></div>
           <div id="map-markers" class="map-markers"></div>
