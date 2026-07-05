@@ -70,15 +70,62 @@
             <button id="fit-map">Fit</button>
           </div>
         </div>
+        <details class="map-filter-drawer" open>
+          <summary>Station Filters <span id="filter-sync-state">local</span></summary>
+          <div id="map-filter-grid" class="map-filter-grid">
+            <label><input type="checkbox" data-pref="show_aprs"> <span class="dot ham"></span>Ham APRS</label>
+            <label><input type="checkbox" data-pref="show_cwop"> <span class="dot wx"></span>CWOP Weather</label>
+            <label><input type="checkbox" data-pref="show_ogn"> <span class="dot ogn"></span>OGN Gliders</label>
+            <label><input type="checkbox" data-pref="show_objects"> <span class="dot object"></span>Objects/Items</label>
+            <label><input type="checkbox" data-pref="hide_static"> Hide Static (&gt;5min)</label>
+            <label><input type="checkbox" data-pref="ghost_old"> Ghost Stale Stations</label>
+            <label><input type="checkbox" data-pref="cluster_enable"> Cluster Markers</label>
+            <label><input type="checkbox" data-pref="show_lora_aprsis"> <span class="dot lora"></span>LoRa (via APRS-IS)</label>
+            <label><input type="checkbox" data-pref="drop_pistar"> Hide digital-voice gateway beacons</label>
+            <label><input type="checkbox" data-pref="drop_dstar"> Hide D-STAR routes</label>
+            <label><input type="checkbox" data-pref="drop_apdesk"> Hide APDESK status</label>
+            <label class="unsupported"><input type="checkbox" data-pref="show_phg"> PHG Circles</label>
+            <label class="unsupported"><input type="checkbox" data-pref="auto_fit"> Auto-Fit Zoom</label>
+            <label class="unsupported"><input type="checkbox" data-pref="prop_lines"> Range Lines (to you)</label>
+            <label class="unsupported"><input type="checkbox" data-pref="wx_radar"> Weather Radar</label>
+            <label class="unsupported"><input type="checkbox" data-pref="show_all_connections"> Show all P2P connections</label>
+            <label class="unsupported"><input type="checkbox" data-pref="show_seamarks"> Sea Marks (OpenSeaMap)</label>
+            <label class="unsupported"><input type="checkbox" data-pref="show_ships"> Live Ships (AIS)</label>
+            <label class="unsupported"><input type="checkbox" data-pref="show_lora"> LoRa Network</label>
+          </div>
+        </details>
         <div id="map" class="osm-map">
           <div id="map-tiles" class="map-tiles"></div>
           <div id="map-markers" class="map-markers"></div>
+          <aside id="station-detail" class="station-detail hidden"></aside>
           <div class="map-controls">
             <button id="map-zoom-in" type="button">+</button>
             <button id="map-zoom-out" type="button">-</button>
           </div>
           <div id="map-attribution">OpenStreetMap</div>
         </div>
+        <section class="geofence-panel">
+          <div class="panel-head">
+            <div><h2>Geo-fence Rules</h2><p>Synced with APRSNET member geo-fence alerts.</p></div>
+            <button id="refresh-geofences" type="button">Refresh</button>
+          </div>
+          <div class="row">
+            <label>Name<input id="gf-name" placeholder="Home area"></label>
+            <label>Callsign<input id="gf-call" placeholder="* or callsign"></label>
+            <label>Type<select id="gf-type"><option value="geofence_enter">Enter zone</option><option value="geofence_exit">Leave zone</option></select></label>
+            <label>Radius mi<input id="gf-radius" value="10"></label>
+          </div>
+          <div class="row">
+            <label>Latitude<input id="gf-lat"></label>
+            <label>Longitude<input id="gf-lon"></label>
+          </div>
+          <div class="tools settings-actions">
+            <button id="gf-use-map" type="button">Use Selected Station</button>
+            <button id="gf-add" type="button" class="primary">Add Synced Rule</button>
+            <span id="gf-state" class="inline-state">Sign in as member to sync rules</span>
+          </div>
+          <div id="geofence-list" class="geofence-list"></div>
+        </section>
       </section>
     </section>
 

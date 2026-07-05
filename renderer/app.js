@@ -8,8 +8,33 @@ const state = {
   packetTimes: [],
   messages: [],
   selectedConversation: '',
+  selectedStation: '',
+  geofenceRules: [],
   userLocation: null,
+  memberPrefs: {},
   map: { lat: 54.5, lon: -2.5, zoom: 6, dragging: false, dragStart: null, dragCenter: null, dragMoved: false, suppressClick: false, frame: null, lastDragDraw: 0, tileNodes: new Map(), markerNodes: new Map() }
+};
+
+const DEFAULT_MAP_PREFS = {
+  show_aprs: true,
+  show_cwop: true,
+  show_ogn: true,
+  show_objects: true,
+  hide_static: false,
+  ghost_old: true,
+  cluster_enable: true,
+  show_lora_aprsis: true,
+  drop_pistar: false,
+  drop_dstar: false,
+  drop_apdesk: false,
+  show_phg: false,
+  auto_fit: false,
+  prop_lines: false,
+  wx_radar: false,
+  show_all_connections: false,
+  show_seamarks: false,
+  show_ships: false,
+  show_lora: false
 };
 
 const MAX_VISIBLE_MARKERS = 900;
@@ -178,6 +203,108 @@ async function loadMessages() {
   renderMessages();
 }
 
+function normalisePrefs(raw = {}) {
+  return Object.assign({}, DEFAULT_MAP_PREFS, raw, {
+    show_aprs: raw.show_aprs ?? raw.showAprs ?? raw['show-aprs'] ?? DEFAULT_MAP_PREFS.show_aprs,
+    show_cwop: raw.show_cwop ?? raw.showCwop ?? raw['show-cwop'] ?? DEFAULT_MAP_PREFS.show_cwop,
+    show_ogn: raw.show_ogn ?? raw.showOgn ?? raw['show-ogn'] ?? DEFAULT_MAP_PREFS.show_ogn,
+    show_objects: raw.show_objects ?? raw.showObjects ?? raw['show-objects'] ?? DEFAULT_MAP_PREFS.show_objects,
+    hide_static: raw.hide_static ?? raw.hideStatic ?? raw['hide-static'] ?? DEFAULT_MAP_PREFS.hide_static,
+    ghost_old: raw.ghost_old ?? raw.ghostOld ?? DEFAULT_MAP_PREFS.ghost_old,
+    cluster_enable: raw.cluster_enable ?? raw.clusterEnable ?? raw['cluster-enable'] ?? DEFAULT_MAP_PREFS.cluster_enable,
+    show_lora_aprsis: raw.show_lora_aprsis ?? raw.showLoraAprsis ?? raw['show-lora-aprsis'] ?? DEFAULT_MAP_PREFS.show_lora_aprsis,
+    show_phg: raw.show_phg ?? raw.showPhg ?? raw['show-phg'] ?? DEFAULT_MAP_PREFS.show_phg,
+    auto_fit: raw.auto_fit ?? raw.autoFit ?? DEFAULT_MAP_PREFS.auto_fit,
+    prop_lines: raw.prop_lines ?? raw.propLines ?? DEFAULT_MAP_PREFS.prop_lines,
+    wx_radar: raw.wx_radar ?? raw.wxRadar ?? DEFAULT_MAP_PREFS.wx_radar,
+    show_all_connections: raw.show_all_connections ?? raw.showAllConnections ?? DEFAULT_MAP_PREFS.show_all_connections,
+    show_seamarks: raw.show_seamarks ?? raw.showSeamarks ?? DEFAULT_MAP_PREFS.show_seamarks,
+    show_ships: raw.show_ships ?? raw.showShips ?? DEFAULT_MAP_PREFS.show_ships,
+    show_lora: raw.show_lora ?? raw.showLora ?? DEFAULT_MAP_PREFS.show_lora,
+    drop_pistar: raw.drop_pistar ?? raw.dropPistar ?? DEFAULT_MAP_PREFS.drop_pistar,
+    drop_dstar: raw.drop_dstar ?? raw.dropDstar ?? DEFAULT_MAP_PREFS.drop_dstar,
+    drop_apdesk: raw.drop_apdesk ?? raw.dropApdesk ?? DEFAULT_MAP_PREFS.drop_apdesk
+  });
+}
+
+function setFilterSyncState(text, kind = '') {
+  const node = $('filter-sync-state');
+  if (!node) return;
+  node.textContent = text;
+  node.className = kind;
+}
+
+function applyMemberPrefs(raw = {}, options = {}) {
+  state.memberPrefs = normalisePrefs(Object.assign({}, state.memberPrefs, raw));
+  document.querySelectorAll('[data-pref]').forEach(input => {
+    const key = input.dataset.pref;
+    input.checked = !!state.memberPrefs[key];
+  });
+  if (!options.silent) setFilterSyncState(state.settings.memberToken ? 'synced' : 'local', state.settings.memberToken ? 'ok' : '');
+  drawMap();
+}
+
+function prefsPayload() {
+  const prefs = Object.assign({}, state.memberPrefs);
+  document.querySelectorAll('[data-pref]').forEach(input => { prefs[input.dataset.pref] = input.checked; });
+  Object.assign(prefs, {
+    showAprs: prefs.show_aprs,
+    showCwop: prefs.show_cwop,
+    showOgn: prefs.show_ogn,
+    showObjects: prefs.show_objects,
+    hideStatic: prefs.hide_static,
+    ghostOld: prefs.ghost_old,
+    clusterEnable: prefs.cluster_enable,
+    showLoraAprsis: prefs.show_lora_aprsis,
+    showPhg: prefs.show_phg,
+    autoFit: prefs.auto_fit,
+    propLines: prefs.prop_lines,
+    wxRadar: prefs.wx_radar,
+    showAllConnections: prefs.show_all_connections,
+    showSeamarks: prefs.show_seamarks,
+    showShips: prefs.show_ships,
+    showLora: prefs.show_lora,
+    dropPistar: prefs.drop_pistar,
+    dropDstar: prefs.drop_dstar,
+    dropApdesk: prefs.drop_apdesk,
+    'show-aprs': prefs.show_aprs,
+    'show-cwop': prefs.show_cwop,
+    'show-ogn': prefs.show_ogn,
+    'show-objects': prefs.show_objects,
+    'hide-static': prefs.hide_static,
+    'cluster-enable': prefs.cluster_enable,
+    'show-lora-aprsis': prefs.show_lora_aprsis,
+    'show-phg': prefs.show_phg
+  });
+  return prefs;
+}
+
+async function loadMemberPreferences() {
+  if (!state.settings.memberToken) {
+    applyMemberPrefs(state.memberPrefs, { silent: true });
+    setFilterSyncState('local');
+    return;
+  }
+  const response = await api('/api/member/preferences', { status: false });
+  if (response.ok && response.data && typeof response.data === 'object') {
+    applyMemberPrefs(response.data);
+    return;
+  }
+  setFilterSyncState('sync failed', 'bad');
+}
+
+async function saveMemberPreferences() {
+  state.memberPrefs = prefsPayload();
+  drawMap();
+  if (!state.settings.memberToken) {
+    setFilterSyncState('local');
+    return;
+  }
+  setFilterSyncState('saving', 'warn');
+  const response = await api('/api/member/preferences', { method: 'PUT', body: state.memberPrefs, status: false });
+  setFilterSyncState(response.ok ? 'synced' : 'sync failed', response.ok ? 'ok' : 'bad');
+}
+
 async function loadWeather() {
   renderWeatherStations();
   ensureUserLocation().then(renderWeatherStations);
@@ -273,6 +400,8 @@ async function verifyMemberLogin(options = {}) {
       updatePreviews();
       if (!options.silent) setMemberLoginState('ok', 'Member session is valid');
       await loadMessages();
+      await loadMemberPreferences();
+      await loadGeofences();
       setPill('api-state', 'ok', 'API online');
       return true;
     }
@@ -301,6 +430,8 @@ async function verifyMemberLogin(options = {}) {
       setMemberLoginState('ok', filled.length ? `Member login OK; filled ${filled.join(' and ')}` : 'Member login OK; no callsign/passcode returned');
     }
     await loadMessages();
+    await loadMemberPreferences();
+    await loadGeofences();
     return true;
   }
   if (!options.silent) setMemberLoginState('bad', response.data?.error || response.error || 'Member login failed');
@@ -358,6 +489,14 @@ function connectWebSocket() {
       const rows = Array.isArray(message.data) ? message.data : [message.data];
       state.messages = mergeMessages([...state.messages, ...rows]);
       renderMessages();
+    }
+    if (message.type === 'member_sync' && message.data && typeof message.data === 'object') {
+      applyMemberPrefs(message.data);
+    }
+    if (message.type === 'geo_fence_sync' && Array.isArray(message.data)) {
+      state.geofenceRules = message.data;
+      renderGeofences();
+      setGeofenceState('ok', 'Geo-fences synced');
     }
     if (message.type === 'alert') window.aprsnet.notify('APRSNET Alert', message.message || message.packet || 'New alert');
   });
@@ -454,6 +593,51 @@ function aprsSymbolView(station) {
     }
     : null;
   return { key, label: base[0], glyph: base[1], overlay: symbol.overlay, sprite };
+}
+
+function packetDestination(raw = '') {
+  const gt = raw.indexOf('>');
+  const colon = raw.indexOf(':');
+  if (gt < 0 || colon < gt) return '';
+  return raw.slice(gt + 1, colon).split(',')[0].toUpperCase();
+}
+
+function isLoraStation(station) {
+  const raw = String(station.raw || '');
+  const text = `${station.call || ''} ${raw} ${station.comment || ''}`.toUpperCase();
+  const dest = packetDestination(raw);
+  return /^APLR/.test(dest) || /^APLG\d/.test(dest) || /^APLT\d/.test(dest) || /^APLO/.test(dest) ||
+    (dest.startsWith('APL') && dest.length >= 5) || text.includes('LORA') || text.includes('LORA-APRS');
+}
+
+function stationKind(station) {
+  const raw = String(station.raw || '');
+  const text = `${station.call || ''}${raw}`.toUpperCase();
+  const dest = packetDestination(raw);
+  if (station.type === 'object') return 'object';
+  if (parseWXPacket(raw) || text.includes('CWOP')) return 'cwop';
+  if (text.includes('OGNFLR') || call(station.call).startsWith('FLR') || /^APOG/.test(dest)) return 'ogn';
+  if (isLoraStation(station)) return 'lora';
+  if (text.includes('PISTAR') || text.includes('MMDVM') || text.includes('APDPRS') || /^APZDMR/.test(dest) || /^APDG/.test(dest) || text.includes('APIRCD') || text.includes('IRCDDB')) return 'pistar';
+  if (text.includes('D-STAR') || text.includes('APDSTR')) return 'dstar';
+  if (text.includes('APDESK')) return 'apdesk';
+  return 'aprs';
+}
+
+function stationHiddenByPrefs(station, now = Math.round(Date.now() / 1000)) {
+  const prefs = normalisePrefs(state.memberPrefs);
+  const kind = stationKind(station);
+  const raw = String(station.raw || '').toUpperCase();
+  if (prefs.drop_pistar && (kind === 'pistar' || raw.includes('PISTAR') || raw.includes('MMDVM') || raw.includes('APDPRS') || raw.includes('APDG') || raw.includes('APIRCD') || raw.includes('IRCDDB'))) return true;
+  if (prefs.drop_dstar && (kind === 'dstar' || raw.includes('D-STAR') || raw.includes('APDSTR'))) return true;
+  if (prefs.drop_apdesk && (kind === 'apdesk' || raw.includes('APDESK'))) return true;
+  if (prefs.hide_static && station.ts && now - Number(station.ts) > 300) return true;
+  if (kind === 'object' && !prefs.show_objects) return true;
+  if (kind === 'cwop' && !prefs.show_cwop) return true;
+  if (kind === 'ogn' && !prefs.show_ogn) return true;
+  if (kind === 'lora' && !prefs.show_lora_aprsis) return true;
+  if (kind === 'aprs' && !prefs.show_aprs) return true;
+  return false;
 }
 
 function renderPackets() {
@@ -606,6 +790,129 @@ function renderStations() {
   $('metric-stations').textContent = rows.length;
   $('metric-objects').textContent = `${rows.filter(row => row.type === 'object').length} objects`;
   $('station-table').innerHTML = rows.slice(0, 90).map(row => `<tr><td><button class="call-button" data-call="${esc(row.call)}">${esc(row.call)}</button></td><td>${age(row.ts)}</td><td>${row.lat.toFixed(4)}, ${row.lon.toFixed(4)}</td><td><code>${esc(row.path || '-')}</code></td></tr>`).join('');
+}
+
+function stationDetailHtml(station) {
+  const view = aprsSymbolView(station);
+  const qrz = `https://qrz.com/db/${encodeURIComponent(baseCall(station.call))}`;
+  const aprsfi = `https://aprs.fi/#!call=${encodeURIComponent(station.call)}`;
+  return `
+    <div class="detail-head">
+      <div><h3>${esc(station.call)} <span class="pill ok">Live</span></h3><p>${esc(view.label)} ${stationKind(station) !== 'aprs' ? `- ${esc(stationKind(station).toUpperCase())}` : ''}</p></div>
+      <button class="detail-close" data-detail-close type="button">x</button>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-card"><span>Last Position</span><strong>${station.lat.toFixed(5)}, ${station.lon.toFixed(5)}</strong></div>
+      <div class="detail-card"><span>Last Heard</span><strong>${formatClock(station.ts)} (${age(station.ts)} ago)</strong></div>
+      <div class="detail-card"><span>Path</span><code>${esc(station.path || 'n/a')}</code></div>
+      <div class="detail-card"><span>PHG Range</span><strong>${esc(station.phg || 'n/a')}</strong></div>
+      <div class="detail-card"><span>Speed / Course</span><strong>${esc(station.speed || station.course ? `${station.speed || 'n/a'} / ${station.course || 'n/a'}` : 'n/a')}</strong></div>
+      <div class="detail-card"><span>Packets heard</span><strong>Latest packet this session</strong></div>
+    </div>
+    <div class="detail-card" style="margin-top:8px"><span>Comment / Status</span><strong>${esc(station.comment || 'n/a')}</strong></div>
+    <div class="detail-card" style="margin-top:8px"><span>Latest Raw Packet</span><code>${esc(station.raw || 'n/a')}</code></div>
+    <div class="detail-actions">
+      <button type="button" data-detail-message="${esc(station.call)}" class="primary">Send Message</button>
+      <button type="button" data-detail-watch="${esc(station.call)}">Watch</button>
+      <button type="button" data-detail-geofence="${esc(station.call)}">Geo-fence Here</button>
+      <button type="button" data-detail-path="${esc(station.call)}">Show Path</button>
+      <a href="${qrz}" data-external="${qrz}">QRZ</a>
+      <a href="${aprsfi}" data-external="${aprsfi}">aprs.fi</a>
+    </div>
+  `;
+}
+
+function openStationDetail(callValue) {
+  const station = state.stations.get(callValue);
+  if (!station) return;
+  state.selectedStation = station.call;
+  const panel = $('station-detail');
+  panel.innerHTML = stationDetailHtml(station);
+  panel.classList.remove('hidden');
+}
+
+function closeStationDetail() {
+  $('station-detail')?.classList.add('hidden');
+}
+
+function useStationForGeofence(callValue = state.selectedStation) {
+  const station = state.stations.get(callValue);
+  if (!station) return;
+  $('gf-call').value = station.call;
+  $('gf-lat').value = station.lat.toFixed(5);
+  $('gf-lon').value = station.lon.toFixed(5);
+  if (!$('gf-name').value) $('gf-name').value = `${station.call} geo-fence`;
+}
+
+function setGeofenceState(kind, text) {
+  const node = $('gf-state');
+  if (!node) return;
+  node.className = `inline-state ${kind}`;
+  node.textContent = text;
+}
+
+function renderGeofences() {
+  const list = $('geofence-list');
+  if (!list) return;
+  list.innerHTML = state.geofenceRules.length ? state.geofenceRules.map(rule => {
+    const who = rule.watch_callsign === '*' ? 'any station' : rule.watch_callsign;
+    const verb = rule.type === 'geofence_exit' ? 'leaves' : 'enters';
+    return `<div class="geofence-rule"><div><strong>${esc(rule.name || `${who} ${verb} zone`)}</strong><br><span>${esc(who)} ${verb} ${Number(rule.radius_mi || 10)} mi around ${Number(rule.lat).toFixed(3)}, ${Number(rule.lon).toFixed(3)}</span></div><button data-gf-delete="${rule.id}" type="button">Delete</button></div>`;
+  }).join('') : '<div class="feed-row">No synced geo-fence rules yet.</div>';
+}
+
+async function loadGeofences() {
+  if (!state.settings.memberToken) {
+    state.geofenceRules = [];
+    renderGeofences();
+    setGeofenceState('warn', 'Sign in as member to sync rules');
+    return;
+  }
+  const response = await api('/api/member/alert-rules', { status: false });
+  if (response.ok && Array.isArray(response.data)) {
+    state.geofenceRules = response.data;
+    renderGeofences();
+    setGeofenceState('ok', 'Geo-fences synced');
+    return;
+  }
+  setGeofenceState('bad', 'Geo-fence sync failed');
+}
+
+async function addGeofence() {
+  if (!state.settings.memberToken) {
+    setGeofenceState('warn', 'Verify member login first');
+    return;
+  }
+  const body = {
+    type: $('gf-type').value,
+    watch_callsign: call($('gf-call').value) || '*',
+    lat: Number($('gf-lat').value),
+    lon: Number($('gf-lon').value),
+    radius_mi: Number($('gf-radius').value) || 10,
+    name: clean($('gf-name').value)
+  };
+  if (!Number.isFinite(body.lat) || !Number.isFinite(body.lon)) {
+    setGeofenceState('bad', 'Latitude and longitude required');
+    return;
+  }
+  const response = await api('/api/member/alert-rules', { method: 'POST', body, status: false });
+  if (response.ok && response.data) {
+    state.geofenceRules.push(response.data);
+    renderGeofences();
+    setGeofenceState('ok', 'Geo-fence rule added');
+  } else {
+    setGeofenceState('bad', response.data?.error || response.error || 'Add failed');
+  }
+}
+
+async function deleteGeofence(id) {
+  if (!state.settings.memberToken) return;
+  const response = await api(`/api/member/alert-rules/${id}`, { method: 'DELETE', status: false });
+  if (response.ok || response.status === 204) {
+    state.geofenceRules = state.geofenceRules.filter(rule => String(rule.id) !== String(id));
+    renderGeofences();
+    setGeofenceState('ok', 'Geo-fence rule deleted');
+  }
 }
 
 function parseWXPacket(raw) {
@@ -856,7 +1163,8 @@ function updateStationMarker(marker, station, x, y, watch) {
   delete marker.dataset.cluster;
   const isWx = !!parseWXPacket(station.raw);
   const view = aprsSymbolView(station);
-  marker.className = ['map-marker', station.type === 'object' ? 'object' : '', watch.has(station.call.toUpperCase()) ? 'watch' : '', isWx ? 'wx' : ''].filter(Boolean).join(' ');
+  const stale = normalisePrefs(state.memberPrefs).ghost_old && station.ts && Math.round(Date.now() / 1000) - Number(station.ts) > 1800;
+  marker.className = ['map-marker', station.type === 'object' ? 'object' : '', watch.has(station.call.toUpperCase()) ? 'watch' : '', isWx ? 'wx' : '', stale ? 'ghost' : ''].filter(Boolean).join(' ');
   marker.title = `${station.call} - ${view.label} (${view.key})`;
   marker.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
   const parts = markerParts(marker);
@@ -918,16 +1226,19 @@ function renderMap() {
   });
 
   const watch = new Set(clean($('watchlist').value).toUpperCase().split(/[,\s]+/).filter(Boolean));
+  const prefs = normalisePrefs(state.memberPrefs);
+  const now = Math.round(Date.now() / 1000);
   const activeMarkers = new Set();
   const visibleStations = [];
   const visibleClusters = new Map();
   for (const station of state.stations.values()) {
     if (!Number.isFinite(station.lat) || !Number.isFinite(station.lon)) continue;
+    if (stationHiddenByPrefs(station, now)) continue;
     const point = project(station.lat, station.lon, zoom);
     const x = Math.round(point.x - left);
     const y = Math.round(point.y - top);
     if (x < -90 || y < -50 || x > map.clientWidth + 120 || y > map.clientHeight + 60) continue;
-    if (zoom < CLUSTER_ZOOM_LIMIT && !watch.has(station.call.toUpperCase())) {
+    if (prefs.cluster_enable && zoom < CLUSTER_ZOOM_LIMIT && !watch.has(station.call.toUpperCase())) {
       const cellX = Math.floor(x / CLUSTER_CELL_SIZE);
       const cellY = Math.floor(y / CLUSTER_CELL_SIZE);
       const key = `cluster:${cellX}:${cellY}`;
@@ -1095,7 +1406,7 @@ async function init() {
 
   document.querySelectorAll('.nav').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
   document.querySelectorAll('input, textarea').forEach(node => node.addEventListener('input', updatePreviews));
-  document.addEventListener('click', event => {
+  document.addEventListener('click', async event => {
     if (state.map.suppressClick) {
       event.preventDefault();
       event.stopPropagation();
@@ -1114,7 +1425,57 @@ async function init() {
       zoomMap(1, event);
       return;
     }
-    const button = event.target.closest('.call-button[data-call], .map-marker[data-call]');
+    const detailClose = event.target.closest('[data-detail-close]');
+    if (detailClose) {
+      closeStationDetail();
+      return;
+    }
+    const external = event.target.closest('[data-external]');
+    if (external) {
+      event.preventDefault();
+      window.aprsnet.openExternal(external.dataset.external);
+      return;
+    }
+    const detailMessage = event.target.closest('[data-detail-message]');
+    if (detailMessage) {
+      $('message-to').value = detailMessage.dataset.detailMessage;
+      state.selectedConversation = detailMessage.dataset.detailMessage;
+      switchView('messages');
+      renderMessages();
+      updatePreviews();
+      return;
+    }
+    const detailGeofence = event.target.closest('[data-detail-geofence]');
+    if (detailGeofence) {
+      useStationForGeofence(detailGeofence.dataset.detailGeofence);
+      return;
+    }
+    const detailPath = event.target.closest('[data-detail-path]');
+    if (detailPath) {
+      const station = state.stations.get(detailPath.dataset.detailPath);
+      setGeofenceState('ok', station?.path ? `Path: ${station.path}` : 'No path for selected station');
+      return;
+    }
+    const detailWatch = event.target.closest('[data-detail-watch]');
+    if (detailWatch) {
+      const current = new Set(clean($('watchlist').value).toUpperCase().split(/[,\s]+/).filter(Boolean));
+      current.add(detailWatch.dataset.detailWatch.toUpperCase());
+      $('watchlist').value = [...current].sort().join(', ');
+      state.settings = await window.aprsnet.saveSettings({ watchlist: $('watchlist').value });
+      drawMap();
+      return;
+    }
+    const gfDelete = event.target.closest('[data-gf-delete]');
+    if (gfDelete) {
+      await deleteGeofence(gfDelete.dataset.gfDelete);
+      return;
+    }
+    const mapMarker = event.target.closest('.map-marker[data-call]');
+    if (mapMarker) {
+      openStationDetail(mapMarker.dataset.call);
+      return;
+    }
+    const button = event.target.closest('.call-button[data-call]');
     if (!button) return;
     $('message-to').value = button.dataset.call;
     state.selectedConversation = button.dataset.call;
@@ -1128,6 +1489,9 @@ async function init() {
   $('refresh-messages').addEventListener('click', loadMessages);
   $('refresh-weather').addEventListener('click', loadWeather);
   $('refresh-analytics').addEventListener('click', loadAnalytics);
+  $('refresh-geofences').addEventListener('click', loadGeofences);
+  $('gf-add').addEventListener('click', addGeofence);
+  $('gf-use-map').addEventListener('click', () => useStationForGeofence());
   $('clear-packets').addEventListener('click', () => { state.packets = []; renderPackets(); });
   $('fit-map').addEventListener('click', fitMapToStations);
   $('map-zoom-in').addEventListener('click', () => zoomMap(1));
@@ -1136,6 +1500,7 @@ async function init() {
     state.settings = await window.aprsnet.saveSettings({ watchlist: $('watchlist').value });
     drawMap();
   });
+  document.querySelectorAll('[data-pref]').forEach(input => input.addEventListener('change', saveMemberPreferences));
   $('map').addEventListener('wheel', event => {
     event.preventDefault();
     zoomMap(event.deltaY < 0 ? 1 : -1, event);
@@ -1186,7 +1551,10 @@ async function init() {
   });
 
   connectWebSocket();
+  applyMemberPrefs(state.memberPrefs, { silent: true });
   await loginMember();
+  await loadMemberPreferences();
+  await loadGeofences();
   await refreshAll();
   setInterval(loadStatus, 15000);
   setInterval(loadStations, 60000);
