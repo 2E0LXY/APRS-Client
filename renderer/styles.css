@@ -430,6 +430,20 @@ label { display: grid; gap: 6px; margin-bottom: 10px; }
 .conversation-item.active { border-color: var(--green); background: #123225; }
 .conversation-item strong { display: block; color: var(--green); }
 .conversation-item span { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-actions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 190px;
+}
+.chat-actions button {
+  padding: 7px 10px;
+}
+.chat-actions .inline-state {
+  max-width: 220px;
+  text-align: right;
+  font-size: 12px;
+}
 .chat-feed {
   flex: 1;
   display: flex;

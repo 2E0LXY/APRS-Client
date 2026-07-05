@@ -128,6 +128,10 @@
         <section class="panel chat-panel">
           <div class="panel-head">
             <div><h2 id="chat-title">Select a conversation</h2><p id="chat-subtitle">Synced from APRSNET member message history where available.</p></div>
+            <div class="chat-actions">
+              <button id="delete-conversation" type="button" class="danger" disabled>Delete Conversation</button>
+              <span id="message-sync-state" class="inline-state">Member sync required for deletes</span>
+            </div>
           </div>
           <div id="message-feed" class="chat-feed"></div>
           <div class="composer">

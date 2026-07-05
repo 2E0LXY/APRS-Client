@@ -740,6 +740,13 @@ function appendMessage(message) {
   renderMessages();
 }
 
+function setMessageSyncState(status, text) {
+  const node = $('message-sync-state');
+  if (!node) return;
+  node.className = `inline-state ${status || ''}`;
+  node.textContent = text;
+}
+
 function conversationPeer(message) {
   const mine = myMessageCalls();
   if (message.direction === 'out') return message.to || 'UNKNOWN';
@@ -776,6 +783,10 @@ function renderMessages() {
   const active = conversations.find(conv => conv.peer === state.selectedConversation);
   $('chat-title').textContent = active ? active.peer : 'Select a conversation';
   $('chat-subtitle').textContent = active ? `${active.messages.length} synced message${active.messages.length === 1 ? '' : 's'}` : 'Synced from APRSNET member message history where available.';
+  if ($('delete-conversation')) {
+    $('delete-conversation').disabled = !active || !state.settings.memberToken;
+  }
+  setMessageSyncState(state.settings.memberToken ? 'ok' : 'warn', state.settings.memberToken ? 'Messages synced with member account' : 'Member sync required for deletes');
   $('message-feed').innerHTML = active
     ? active.messages.map(message => {
       const outgoing = messageDirection(message) === 'out';
@@ -783,6 +794,29 @@ function renderMessages() {
     }).join('')
     : '<div class="bubble system">Choose a conversation on the left.</div>';
   $('message-feed').scrollTop = $('message-feed').scrollHeight;
+}
+
+async function deleteSelectedConversation() {
+  const peer = call(state.selectedConversation);
+  if (!peer) {
+    setMessageSyncState('warn', 'Select a conversation to delete');
+    return;
+  }
+  if (!state.settings.memberToken) {
+    setMessageSyncState('bad', 'Sign in as a member to delete synced messages');
+    return;
+  }
+  if (!confirm(`Delete all synced messages with ${peer}?`)) return;
+  setMessageSyncState('warn', `Deleting ${peer} conversation...`);
+  const response = await api(`/api/member/messages?callsign=${encodeURIComponent(peer)}`, { method: 'DELETE' });
+  if (!response.ok) {
+    setMessageSyncState('bad', response.data?.error || 'Message delete failed');
+    return;
+  }
+  state.messages = normaliseMessageList(state.messages).filter(message => conversationPeer(message) !== peer);
+  state.selectedConversation = '';
+  renderMessages();
+  setMessageSyncState('ok', `Deleted synced conversation with ${peer}`);
 }
 
 function renderStations() {
@@ -1487,6 +1521,7 @@ async function init() {
   $('open-site').addEventListener('click', () => window.aprsnet.openExternal(state.server.url));
   $('refresh-now').addEventListener('click', refreshAll);
   $('refresh-messages').addEventListener('click', loadMessages);
+  $('delete-conversation').addEventListener('click', deleteSelectedConversation);
   $('refresh-weather').addEventListener('click', loadWeather);
   $('refresh-analytics').addEventListener('click', loadAnalytics);
   $('refresh-geofences').addEventListener('click', loadGeofences);
